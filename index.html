@@ -17807,6 +17807,11 @@ host.__E = function (k, v) { E[k] = v; return E[k]; };
 host.__goto = function (k) { goScene(k); return scene; };
 host.__adv = function (sec) { for (var t = 0; t < sec; t += 0.05) { now += 0.05; step(0.05); } return FLY ? FLY.t : -1; };
 host.__perf = function (n) { var t0 = performance.now(), i; for (i = 0; i < n; i++) { now += 0.016; step(0.016); buildScene(now, 0.016); } return (performance.now() - t0) / n; };
+// 主题数据更新钩子：供插件调用，刷新 UI
+window.__DQ_UPDATE_UI__ = function(snapshot) {
+  if (typeof updatePanels === 'function') updatePanels(true);
+};
+
 requestAnimationFrame(frame);
 }
 
