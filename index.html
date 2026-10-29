@@ -18307,10 +18307,178 @@ host.__E = function (k, v) { E[k] = v; return E[k]; };
 host.__goto = function (k) { goScene(k); return scene; };
 host.__adv = function (sec) { for (var t = 0; t < sec; t += 0.05) { now += 0.05; step(0.05); } return FLY ? FLY.t : -1; };
 host.__perf = function (n) { var t0 = performance.now(), i; for (i = 0; i < n; i++) { now += 0.016; step(0.016); buildScene(now, 0.016); } return (performance.now() - t0) / n; };
+/* =====================================================================
+   OpenClaw 实时数据接入
+   说明：园区 3D 动画与仿真继续运行，保证原主题观感；顶栏 KPI、车间负责人、
+   订单标题池、事件流、终端日志改为真实 OpenClaw 运行时数据。
+   ===================================================================== */
+var DQ = { on: false, snap: null, seen: {}, last: 0, allow: false };
+function dqStamp() {
+  try {
+    var el = SR.querySelector(".sub2");
+    if (el) for (var i = 0; i < el.childNodes.length; i++) {
+      var n = el.childNodes[i];
+      if (n.nodeType === 3 && n.nodeValue.indexOf("示例数据") >= 0) n.nodeValue = "OpenClaw 实时数据 · ";
+    }
+    setTxt($("mSub"), "智造园区 · 实时数据");
+  } catch (e) { /* 忽略 */ }
+}
+var dqRawLog = log;
+log = function (h, tag, msg, kind) {
+  if (!DQ.on || DQ.allow) dqRawLog(h, tag, msg, kind);
+};
+function dqApply(snapshot) {
+  var P = window.__DQ_PROJECT_PARK__ && window.__DQ_PROJECT_PARK__(snapshot);
+  if (!P) return false;
+  var first = !DQ.on;
+  DQ.on = true; DQ.snap = snapshot;
+  if (first) { LOG.length = 0; logDirty = true; }
+  dqStamp();
+  /* 车间 ↔ Agent：保留车间语义，把负责人、任务池换成真实 Agent / 会话 */
+  for (var k = 0; k < NH; k++) {
+    var w = WS[k], src = P.workshops[k];
+    if (!src) continue;
+    if (src.agent) { w.ag = src.agent; w.sourceId = src.id; }
+    if (src.titles && src.titles.length) w.titles = src.titles.slice();
+    var row = WSR[k];
+    if (row) {
+      var em = row.el.querySelector(".nm em");
+      if (em) setTxt(em, w.en + " · " + w.steps.length + " 道工序 · " + w.ag);
+      if (row.o && row.o.nextSibling && row.o.nextSibling.nodeType === 3 && row.o.nextSibling.nodeValue !== "会话") row.o.nextSibling.nodeValue = "会话";
+    }
+  }
+  if (P.channels && P.channels.length) {
+    for (var c = 0; c < CH.length; c++) if (P.channels[c]) CH[c] = P.channels[c];
+  }
+  /* 真实事件 → 事件流 / 车间终端（按 key 去重） */
+  var evs = P.events || [], added = 0;
+  for (var i = 0; i < evs.length && added < 6; i++) {
+    var e = evs[i], key = e.key || (e.time + "|" + e.text);
+    if (DQ.seen[key]) continue;
+    DQ.seen[key] = 1; added++;
+    if (!e.text) continue;
+    var hk = e.agentIndex >= 0 && e.agentIndex < NH ? e.agentIndex : -1;
+    DQ.allow = true;
+    log(hk, String(e.tag || "EVT").slice(0, 6), e.text, e.kind || "");
+    DQ.allow = false;
+    if (hk >= 0) tPush(hk, "hd2", e.text);
+  }
+  if (added) { logDirty = true; termDirty = true; renderLog(scene); }
+  var seenKeys = Object.keys(DQ.seen);
+  if (seenKeys.length > 400) { DQ.seen = {}; for (var j = 0; j < 20 && j < evs.length; j++) DQ.seen[evs[j].key || (evs[j].time + "|" + evs[j].text)] = 1; }
+  return true;
+}
+function dqPaint() {
+  var P = window.__DQ_PROJECT_PARK__ && window.__DQ_PROJECT_PARK__(DQ.snap);
+  if (!P) return;
+  var m = P.kpis, i;
+  var idle = Math.max(0, m.totalSessions - m.activeSessions);
+  function dqLabel(id, text) { var el = $(id); if (!el) return; var p = el.parentNode; var em = p && p.querySelector("em"); if (em) setTxt(em, text); }
+  function dqAge(min) {
+    if (!isFinite(min) || min < 0) return ["0", "min"];
+    if (min < 1) return [String(Math.round(min * 60)), "s"];
+    if (min < 60) return [min.toFixed(1), "min"];
+    if (min < 1440) return [(min / 60).toFixed(1), "h"];
+    return [(min / 1440).toFixed(1), "d"];
+  }
+  /* 原主题的几张主 KPI 卡直接写 textContent，不经过 setTxt 缓存；
+     这里先清缓存再写，避免实时值被缓存判等跳过。 */
+  function dqW(el, value) { if (!el) return; el.__t = null; setTxt(el, value); }
+  function dqH(el, value) { if (!el) return; el.__h = null; setHTML(el, value); }
+  dqLabel("pOrd", "活跃会话");
+  dqLabel("pDel", "累计会话");
+  dqLabel("pWip", "运行中");
+  dqLabel("pFpy", "渠道在线率");
+  dqLabel("pLead", "最近会话");
+  dqLabel("pRate", "累计会话");
+  dqLabel("pQ", "运行中");
+  dqLabel("pRej", "运行时错误");
+  dqLabel("pTrans", "活跃会话");
+  dqLabel("pDrone", "事件");
+  setTxt($("sWip"), String(m.activeSessions));
+  setTxt($("sFpy"), m.successRate.toFixed(1));
+  setTxt($("sbDel"), fmt(m.totalSessions));
+  setTxt($("sbWip"), String(m.activeSessions));
+  setTxt($("sbFpy"), m.successRate.toFixed(1));
+  setTxt($("crSteps"), String(m.activeAgents));
+  dqW($("pOrd"), fmt(m.activeSessions));
+  setTxt($("pOrdD"), "活跃会话 · 实时调度");
+  dqW($("pDel"), fmt(m.totalSessions));
+  setTxt($("pDelD"), "累计会话 · " + m.activeAgents + " Agent 在线");
+  dqW($("pWip"), String(m.activeSessions));
+  setTxt($("pWipD"), "运行 " + m.activeSessions + " · 空闲 " + idle);
+  dqH($("pFpy"), m.channelRate.toFixed(1) + "<small>%</small>");
+  setTxt($("pFpyD"), "渠道在线 " + m.channelsOnline + " / " + m.channelsTotal);
+  var age = dqAge(m.recentAgeMin);
+  dqH($("pLead"), age[0] + "<small>" + age[1] + "</small>");
+  setTxt($("pLeadD"), "最近一次 Agent 会话");
+  dqW($("pAg"), String(m.agents));
+  setTxt($("pAgD"), "在线 " + m.activeAgents + " · 渠道 " + m.channelsOnline);
+  dqH($("pRate"), fmt(m.totalSessions) + "<small>会话</small>");
+  setTxt($("pRateD"), "OpenClaw 运行时");
+  dqW($("pQ"), String(m.activeSessions));
+  setTxt($("pQD"), "运行中的会话");
+  dqW($("pRej"), String(m.errors));
+  setTxt($("pRejD"), "运行时错误");
+  dqW($("pBusy"), m.busiest);
+  setTxt($("pTrans"), m.activeSessions + " 个");
+  dqW($("pDrone"), fmt(m.events) + " 条");
+  setTxt($("shTot"), fmt(m.totalSessions) + " 会话");
+  var total = 0;
+  for (i = 0; i < P.workshops.length; i++) total += P.workshops[i].sessions;
+  for (i = 0; i < NH && i < P.workshops.length; i++) {
+    var n = P.workshops[i].sessions;
+    SHB[i].style.flexGrow = String(Math.max(1, n));
+    setTxt(SHL[i], fmt(n));
+    if (WSR[i]) {
+      setTxt(WSR[i].o, fmt(n));
+      var liveRow = P.workshops[i].active === true;
+      setTxt(WSR[i].pill, liveRow ? "运行中" : "待命");
+      setCls(WSR[i].pill, "pill " + (liveRow ? "s-run" : "s-idle"));
+    }
+    var wl = LABELS[i];
+    if (wl) {
+      var wsx = P.workshops[i];
+      setTxt(wl.st, wsx.active === true ? "运行中" : "待命");
+      setTxt(wl.pc, fmt(n) + " 会话");
+      setHTML(wl.l3, wsx.titles && wsx.titles[0] ? "<b>SESSION</b>" + esc(wsx.titles[0]) : "<b>AGENT</b>" + esc(wsx.agent || "待命"));
+    }
+  }
+  setTxt(HUBL.st, "实时接入");
+  setTxt(HUBL.pc, String(m.activeSessions));
+  setHTML(HUBL.l3, "<b>ORCH</b>" + (P.workshops[0] ? P.workshops[0].agent : "总调度") + " · 活跃 " + m.activeSessions + " · 渠道 " + m.channelsOnline);
+  if (scene < 0) {
+    setTxt($("mS1L"), "累计会话"); setTxt($("mS1"), fmt(m.totalSessions));
+    setTxt($("mS2L"), "运行中"); setTxt($("mS2"), String(m.activeSessions));
+    setTxt($("mS3L"), "渠道在线率"); setTxt($("mS3"), m.channelRate.toFixed(1) + "%");
+    setTxt($("mSub"), "智造园区 · 实时数据");
+  } else {
+    var src = P.workshops[scene];
+    if (src) {
+      setTxt($("mS1L"), "负责 Agent"); setTxt($("mS1"), src.agent);
+      setTxt($("mS2L"), "会话"); setTxt($("mS2"), String(src.sessions));
+      setTxt($("mS3L"), "状态"); setTxt($("mS3"), src.active ? "运行中" : "待命");
+    }
+  }
+}
+var dqNativePanels = updatePanels;
+updatePanels = function (force) {
+  /* 先跑主题原生面板，再用真实数据覆盖；原生面板约 5Hz，实时覆盖同样 5Hz，
+     避免节流导致两套数值在大屏上来回闪。 */
+  dqNativePanels(force);
+  if (!DQ.on || !DQ.snap) return;
+  try { dqPaint(); } catch (e) { DQ.err = String(e && e.stack || e); }
+};
+host.__dqApply = dqApply;
+host.__dqPaint = dqPaint;
+host.__dqState = function () { return { live: DQ.on, seen: Object.keys(DQ.seen).length, snapAt: DQ.snap && DQ.snap.updatedAt, err: DQ.err || null }; };
 // 主题数据更新钩子：供插件调用，刷新 UI
 window.__DQ_UPDATE_UI__ = function(snapshot) {
-  if (typeof updatePanels === 'function') updatePanels(true);
+  if (host.__dqApply) host.__dqApply(snapshot);
+  else if (typeof updatePanels === 'function') updatePanels(true);
 };
+var dqBoot = window.__DQ_GET_SNAPSHOT__ && window.__DQ_GET_SNAPSHOT__();
+if (dqBoot) dqApply(dqBoot);
 
 requestAnimationFrame(frame);
 }
@@ -19749,7 +19917,7 @@ var PROJS = [], PJN = 0, PCI = 0;
 function mkProject(o) {
   var t = TPL[o.tpl], S0 = o.S || t.S;
   var P = { id: "P" + (++PJN), zh: o.zh, c: o.c || PCOLS[PCI++ % PCOLS.length], tpl: o.tpl, S: S0.map(function (s) { return { d: s[0], zh: s[1], rv: s[2], t0: s[3], t1: s[4] }; }),
-    T: o.T.slice(), items: [], done: 0, state: "run", doneAt: 0, newAt: now, phase: o.phase || 1, preset: !!o.preset, user: !!o.user, urgent: !!o.urgent, born: now, raw: S0 };
+    T: o.T.slice(), items: [], done: 0, state: "run", doneAt: 0, newAt: now, phase: o.phase || 1, preset: !!o.preset, live: !!o.live, user: !!o.user, urgent: !!o.urgent, born: now, raw: S0 };
   P.ns = P.S.length; P.N = P.T.length; P.col = hex3(P.c); P.colL = lin(P.col); P.own = P.S[0].d;
   P.items = P.T.map(function (tt, k) { return { id: P.id + "-" + pad(k + 1, 2), P: P, k: k, t: tt, s: 0, st: "back", who: null, wk: null, prog: 0, dur: 1, rw: false, rwN: 0, born: now, kind: "work" }; });
   if (o.user) PROJS.unshift(P); else PROJS.push(P);
@@ -20014,7 +20182,7 @@ function updateSim(dt) {
   for (i = TIMERS.length - 1; i >= 0; i--) if (now >= TIMERS[i].t) { var f = TIMERS[i].f; TIMERS.splice(i, 1); f(); }
   ST.dispT -= dt;
   if (ST.dispT <= 0) { ST.dispT = dispatch() ? rr(1.0, 1.9) : 0.8; }
-  for (i = PROJS.length - 1; i >= 0; i--) { var P = PROJS[i]; if (P.state === "done") { if (P.preset && now - P.doneAt > 24) nextPhase(P); else if (!P.preset && now - P.doneAt > 90) { PROJS.splice(i, 1); projDirty = true; } } }
+  for (i = PROJS.length - 1; i >= 0; i--) { var P = PROJS[i]; if (P.state === "done") { if (P.live) { /* 实时项目保留，等待下一帧真实数据刷新 */ } else if (P.preset && now - P.doneAt > 24) nextPhase(P); else if (!P.preset && now - P.doneAt > 90) { PROJS.splice(i, 1); projDirty = true; } } }
   for (i = RINGS.length - 1; i >= 0; i--) if (now - RINGS[i].t0 > 1.4) RINGS.splice(i, 1);
   for (i = FLYS.length - 1; i >= 0; i--) { var it = FLYS[i]; it.ft += dt / it.fd; if (it.ft >= 1) { FLYS.splice(i, 1); arrive(it); } }
   for (i = 0; i < PEOPLE.length; i++) updPerson(PEOPLE[i], dt);
@@ -21093,6 +21261,208 @@ host.__inv = function () {
   return errs;
 };
 host.__cpu = function (n) { if (!BAT.v) batInit(); var t0 = performance.now(), i; for (i = 0; i < n; i++) { now += 0.016; step(0.016); buildScene(now, 0.016); placeHud(); } return { ms: (performance.now() - t0) / n, bat: BAT.nv, bati: BAT.ni, fxa: FXA.n, draws: DRAWS.length }; };
+/* =====================================================================
+   OpenClaw 实时数据接入
+   说明：总部 3D 仿真与动效继续运行；成员名牌、部门统计、项目列表、
+   KPI、事件流改为真实 OpenClaw Agent / Session 数据。
+   ===================================================================== */
+var DQ = { on: false, snap: null, seen: {}, last: 0, allow: false, fp: "" };
+function dqClip(value, max) {
+  var text = String(value === undefined || value === null ? "" : value).replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  return text.length > max ? text.slice(0, Math.max(1, max - 1)) + "…" : text;
+}
+function dqStamp() {
+  try {
+    var el = SR.querySelector(".sub2");
+    if (el) for (var i = 0; i < el.childNodes.length; i++) {
+      var n = el.childNodes[i];
+      if (n.nodeType === 3 && n.nodeValue.indexOf("示例数据") >= 0) n.nodeValue = "OpenClaw 实时数据 · ";
+    }
+  } catch (e) { /* 忽略 */ }
+}
+var dqRawLog = log;
+log = function (h, tag, msg, kind) {
+  if (!DQ.on || DQ.allow) dqRawLog(h, tag, msg, kind);
+};
+function dqMapPeople(list, chief) {
+  if (chief) {
+    CHIEF.n = chief.name || CHIEF.n;
+    CHIEF.role = "总指挥 · " + (chief.role || "Agent");
+    CHIEF.sourceId = chief.id;
+    tagSync(CHIEF);
+  }
+  var slots = living().filter(function (p) { return p.ai && !p.isChief; });
+  var used = {};
+  (list || []).forEach(function (person) {
+    var candidates = slots.filter(function (p) { return !used[p.id] && p.d === person.dept; });
+    candidates.sort(function (a, b) { return (a.head ? 1 : 0) - (b.head ? 1 : 0); });
+    var target = candidates[0] || slots.filter(function (p) { return !used[p.id]; })[0];
+    if (!target) return;
+    used[target.id] = 1;
+    target.n = person.name;
+    target.role = person.role + " · Agent";
+    target.sourceId = person.id;
+    target.tok = person.tokens || 0;
+    target.doneN = person.sessions || 0;
+    target.dqDept = person.dept;
+    target.dqLive = true;
+    tagSync(target);
+  });
+  rosterDirty = true;
+}
+function dqRebuildProjects(list) {
+  PROJS.length = 0;
+  PEOPLE.forEach(function (p) {
+    p.q.length = 0;
+    p.cur = null;
+    p.carry = null;
+    p.inb = 0;
+    p.task = null;
+    p.after = null;
+    p.wait = 0;
+    p.hist.length = 0;
+  });
+  FLYS.length = 0;
+  RINGS.length = 0;
+  (list || []).forEach(function (row) {
+    var P = mkProject({
+      zh: dqClip(row.title, 20) || ("会话 " + row.id),
+      tpl: 0,
+      S: TPL[0].S,
+      T: [dqClip(row.title, 18) || "会话"],
+      live: true,
+      phase: 1
+    });
+    P.preset = false;
+    P.live = true;
+    P.newAt = -99;
+    P.dqSource = row;
+    var it = P.items[0];
+    if (row.stage === "done" || row.progress >= 1) {
+      it.st = "fin"; it.s = P.ns; it.finAt = now;
+      P.done = 1; P.state = "done"; P.doneAt = now;
+      return;
+    }
+    var s = clamp(Math.floor((Number(row.progress) || 0) * P.ns), 0, P.ns - 1);
+    var S = P.S[s], rv = rvOf(S);
+    it.s = s; it.st = "q"; it.born = -8; it.prog = 0;
+    if (row.stage === "review" && rv) { it.kind = "rev"; it.who = rv; rv.q.push(it); }
+    else if (row.stage === "failed") { it.kind = "work"; it.rw = true; it.who = pickWorker(S, null); it.who.q.push(it); }
+    else { it.kind = "work"; it.who = pickWorker(S, null); it.who.q.push(it); }
+  });
+  PEOPLE.forEach(function (p) {
+    if (p.q.length && !p.cur) startTask(p);
+  });
+  projDirty = true;
+  rosterDirty = true;
+}
+function dqApply(snapshot) {
+  var H = window.__DQ_PROJECT_HQ__ && window.__DQ_PROJECT_HQ__(snapshot);
+  if (!H) return false;
+  var first = !DQ.on;
+  DQ.on = true; DQ.snap = snapshot;
+  if (first) { LOG.length = 0; logDirty = true; }
+  dqStamp();
+  dqMapPeople(H.people, H.people[0]);
+  var fp = H.projects.map(function (p) { return p.id + "|" + p.stage + "|" + Math.round((Number(p.progress) || 0) * 10); }).join(";");
+  if (fp !== DQ.fp) { DQ.fp = fp; dqRebuildProjects(H.projects); }
+  var evs = H.events || [], added = 0;
+  for (var i = 0; i < evs.length && added < 6; i++) {
+    var e = evs[i], key = e.key || (e.time + "|" + e.text);
+    if (DQ.seen[key]) continue;
+    DQ.seen[key] = 1; added++;
+    if (!e.text) continue;
+    DQ.allow = true;
+    log(e.agentIndex >= 0 ? e.dept : -1, String(e.tag || "EVT").slice(0, 6), e.text, e.kind || "");
+    DQ.allow = false;
+  }
+  if (added) { logDirty = true; renderLog(); }
+  var seenKeys = Object.keys(DQ.seen);
+  if (seenKeys.length > 400) { DQ.seen = {}; for (var j = 0; j < 20 && j < evs.length; j++) DQ.seen[evs[j].key || (evs[j].time + "|" + evs[j].text)] = 1; }
+  return true;
+}
+function dqPaint() {
+  var H = window.__DQ_PROJECT_HQ__ && window.__DQ_PROJECT_HQ__(DQ.snap);
+  if (!H) return;
+  var m = H.kpis;
+  function dqLabel(id, text) { var el = $(id); if (!el) return; var p = el.parentNode; var span = p && p.querySelector("span"); if (span) setTxt(span, text); }
+  function dqSib(id, text) { var el = $(id); if (!el) return; var b = el.nextElementSibling; if (b && b.tagName === "B") setTxt(b, text); }
+  function dqAge(min) {
+    if (!isFinite(min) || min < 0) return ["0", "min"];
+    if (min < 1) return [String(Math.round(min * 60)), "s"];
+    if (min < 60) return [min.toFixed(1), "min"];
+    if (min < 1440) return [(min / 60).toFixed(1), "h"];
+    return [(min / 1440).toFixed(1), "d"];
+  }
+  dqLabel("kDone", "累计完成");
+  dqLabel("kWip", "运行中");
+  dqLabel("kRev", "最近更新");
+  dqLabel("kLead", "最近会话");
+  dqLabel("kRw", "错误率");
+  dqLabel("kTok", "累计 Token");
+  setTxt($("subN"), String(m.agents));
+  setTxt($("subA"), m.activeAgents + " 个 Agent");
+  setTxt($("subH"), m.channelsOnline + " 个渠道在线");
+  setTxt($("sStaff"), String(m.agents));
+  setTxt($("sAI"), String(m.activeAgents));
+  setTxt($("sHu"), String(Math.max(0, m.channelsTotal - m.channelsOnline)));
+  setHTML($("cP"), Math.round(m.progress * 100) + "<small>%</small>");
+  setTxt($("cPn"), H.projects.length + " 个真实会话");
+  setTxt($("kDone"), String(m.completedSessions));
+  setTxt($("kDoneD"), "累计会话 " + m.totalSessions + " 个");
+  setTxt($("kWip"), String(m.activeSessions));
+  setTxt($("kWipD"), "项目 " + H.projects.length + " 个 · 最近更新 " + dqAge(m.recentAgeMin).join(" "));
+  setTxt($("kRev"), String(m.reviewSessions));
+  setTxt($("kRevD"), "最近 10 分钟内有更新");
+  setCls($("kRevT"), "kt" + (m.reviewSessions >= 5 ? " w" : ""));
+  var age = dqAge(m.recentAgeMin);
+  setHTML($("kLead"), age[0] + "<small>" + age[1] + "</small>");
+  setHTML($("kRw"), (m.totalSessions ? (m.errors / m.totalSessions * 100).toFixed(1) : "0.0") + "<small>%</small>");
+  setTxt($("kRwD"), "错误 " + m.errors);
+  setTxt($("kTok"), fmtK(m.tokens));
+  setTxt($("kTokD"), "累计 Token · 事件 " + m.eventCount);
+  var activeProjects = H.projects.filter(function (P) { return P.stage !== "done"; }).length;
+  setTxt($("crOn"), String(m.agents));
+  dqSib("crOn", "个 Agent");
+  setTxt($("crPj"), String(activeProjects));
+  dqSib("crPj", "个项目推进中");
+  setTxt($("crSub"), "LIVE");
+  H.departments.forEach(function (D, k) {
+    var R = DR[k];
+    if (!R) return;
+    setHTML(R.hd, D.agents ? '<i class="tag-ai">AI</i>' + esc(D.lead) + " · " + D.agents + " 人" : '<i class="tag-hu" style="background:var(--bad);color:#fff">空缺</i>0 人');
+    setTxt(R.pc, Math.round(D.progress * 100) + "%");
+    setW(R.bar, D.progress);
+    setTxt(R.a, String(D.active));
+    setTxt(R.q, String(Math.max(0, D.sessions - D.completed - D.active)));
+    setTxt(R.r, "0");
+    setTxt(R.o, String(D.completed));
+  });
+  setTxt(CHL.pc, String(m.activeSessions));
+  setHTML(CHL.l3, "活跃 <b>" + m.activeSessions + "</b> · 项目 <b>" + H.projects.length + "</b> · " + esc(H.chiefName || "Chief"));
+  if (V.k === "ov") {
+    setTxt($("mSub"), "智能总部 · 实时数据");
+    setTxt($("mS1L"), "公司进度"); setTxt($("mS1"), Math.round(m.progress * 100) + "%");
+    setTxt($("mS2L"), "运行中"); setTxt($("mS2"), String(m.activeSessions));
+    setTxt($("mS3L"), "累计完成"); setTxt($("mS3"), String(m.completedSessions));
+  } else if (V.k === "dp") {
+    var D = H.departments[V.d];
+    if (D) { setTxt($("mS1L"), "部门进度"); setTxt($("mS1"), Math.round(D.progress * 100) + "%"); setTxt($("mS2L"), "在忙 / 会话"); setTxt($("mS2"), D.active + " / " + D.sessions); setTxt($("mS3L"), "成员"); setTxt($("mS3"), String(D.agents)); }
+  }
+}
+var dqNativePanels = updatePanels;
+updatePanels = function (force) {
+  dqNativePanels(force);
+  if (!DQ.on || !DQ.snap) return;
+  try { dqPaint(); } catch (e) { DQ.err = String(e && e.stack || e); }
+};
+host.__dqApply = dqApply;
+host.__dqPaint = dqPaint;
+host.__dqState = function () { return { live: DQ.on, projects: PROJS.length, seen: Object.keys(DQ.seen).length, snapAt: DQ.snap && DQ.snap.updatedAt, err: DQ.err || null }; };
+var dqBoot = window.__DQ_GET_SNAPSHOT__ && window.__DQ_GET_SNAPSHOT__();
+if (dqBoot) dqApply(dqBoot);
+
 requestAnimationFrame(frame);
 }
 

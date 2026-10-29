@@ -29,9 +29,29 @@
   color: inherit;
   font: 700 10px/1 "JetBrains Mono", "Noto Sans SC", ui-monospace, monospace;
   letter-spacing: 0.08em;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+}
+
+#dq-live[data-dragging="true"] #dq-live-pill,
+#dq-live[data-dragging="true"] .dq-head {
+  cursor: grabbing;
+}
+
+#dq-live .dq-pill-grip {
+  flex: none;
+  color: #5d6478;
+  font-size: 10px;
+  letter-spacing: -2px;
+  line-height: 1;
+}
+
+#dq-live-pill:hover .dq-pill-grip {
+  color: #a8f0ff;
 }
 
 #dq-live-pill:hover {
@@ -82,9 +102,11 @@
 
 #dq-live-panel {
   pointer-events: auto;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
   width: min(390px, calc(100vw - 36px));
   max-height: min(56vh, 520px);
-  margin-bottom: 8px;
   padding: 12px;
   overflow: auto;
   border: 1px solid rgba(69, 230, 245, 0.32);
@@ -95,6 +117,16 @@
   -webkit-backdrop-filter: blur(14px);
   scrollbar-width: thin;
   scrollbar-color: rgba(69, 230, 245, 0.35) transparent;
+}
+
+#dq-live[data-placement="below"] #dq-live-panel {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+#dq-live[data-align="left"] #dq-live-panel {
+  right: auto;
+  left: 0;
 }
 
 #dq-live-panel[hidden] {
@@ -108,6 +140,10 @@
   gap: 12px;
   padding-bottom: 9px;
   border-bottom: 1px solid rgba(69, 230, 245, 0.16);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #dq-live .dq-title {
@@ -135,6 +171,39 @@
   font-size: 9px;
   letter-spacing: 0.1em;
   white-space: nowrap;
+}
+
+#dq-live .dq-reset {
+  pointer-events: auto;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid rgba(125, 130, 152, 0.25);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #7d8298;
+  font: 700 11px/1 "JetBrains Mono", ui-monospace, monospace;
+  cursor: pointer;
+}
+
+#dq-live .dq-reset:hover {
+  border-color: rgba(69, 230, 245, 0.6);
+  color: #a8f0ff;
+}
+
+#dq-live .dq-reset:focus-visible {
+  outline: 2px solid #45e6f5;
+  outline-offset: 2px;
+}
+
+#dq-live .dq-head-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
 }
 
 #dq-live .dq-metrics {

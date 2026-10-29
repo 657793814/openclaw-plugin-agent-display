@@ -2,7 +2,7 @@
   "id": "agent-display",
   "name": "agent作战大屏",
   "description": "OpenClaw-native Agent Display dashboard with real agents, sessions, channels, usage, cron, and live events.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -12,9 +12,9 @@
     "onStartup": true
   },
   "controlUi": {
-    "entry": "dist/control-ui/40d7b56d540cf9527856f844767aecde7e4f2488e489c7d0fcd4da80d4ebfa35/index.js",
+    "entry": "dist/control-ui/f92d07a7e6f25516f120f5e874c3b2ada6206d017e94106ef5b1c97456437e46/index.js",
     "styles": [
-      "dist/control-ui/40d7b56d540cf9527856f844767aecde7e4f2488e489c7d0fcd4da80d4ebfa35/index.css"
+      "dist/control-ui/f92d07a7e6f25516f120f5e874c3b2ada6206d017e94106ef5b1c97456437e46/index.css"
     ]
   },
   "contracts": {

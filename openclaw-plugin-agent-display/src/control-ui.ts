@@ -13,7 +13,9 @@ import {
   type DashboardChannelSnapshot,
   type DashboardEventSnapshot,
   type DashboardSessionSnapshot,
+  type DashboardSessionStage,
   type DashboardSnapshot,
+  type DashboardWorkItemSnapshot,
 } from "./shared.js";
 import "./control-ui.css";
 
@@ -50,9 +52,16 @@ type RpcSession = {
   hasActiveRun?: boolean;
   activeRunIds?: string[];
   updatedAt?: number;
+  lastActivityAt?: number;
+  lastInteractionAt?: number;
   derivedTitle?: string | null;
+  displayName?: string | null;
   label?: string | null;
   lastMessage?: string | null;
+  lastMessagePreview?: string | null;
+  channel?: string;
+  status?: string;
+  lastRunError?: string | null;
 };
 
 type RpcSessions = {
@@ -114,6 +123,39 @@ function isActiveSession(session: RpcSession): boolean {
   return session.hasActiveRun === true || (Array.isArray(session.activeRunIds) && session.activeRunIds.length > 0);
 }
 
+const SESSION_STATUSES = new Set([
+  "queued",
+  "running",
+  "review",
+  "done",
+  "failed",
+]);
+
+function sessionStage(session: RpcSession, updatedAt: number): DashboardSessionStage {
+  const status = String(session.status ?? "").toLowerCase();
+  if (SESSION_STATUSES.has(status)) return status as DashboardSessionStage;
+  if (isActiveSession(session)) return "running";
+  const age = Date.now() - updatedAt;
+  return age < 10 * 60_000 ? "review" : "done";
+}
+
+function sessionProgress(stage: DashboardSessionStage): number {
+  switch (stage) {
+    case "queued":
+      return 0.08;
+    case "running":
+      return 0.55;
+    case "review":
+      return 0.8;
+    case "done":
+      return 1;
+    case "failed":
+      return 0.35;
+    default:
+      return 0.1;
+  }
+}
+
 function describeSessionEvent(payload: unknown): DashboardEventSnapshot {
   const record = asRecord(payload);
   const session = asRecord(record.session);
@@ -133,6 +175,11 @@ function describeSessionEvent(payload: unknown): DashboardEventSnapshot {
     time: formatTime(Date.now()),
     tag: "MSG",
     text: [agentId, text].filter(Boolean).join(" · "),
+    ts: Date.now(),
+    agentId: agentId || undefined,
+    sessionKey: sessionKey || undefined,
+    kind: "message",
+    source: "openclaw",
   };
 }
 
@@ -200,9 +247,14 @@ async function collectSnapshot(
   }
   const loadedByAgent = new Map<string, number>();
   const activeByAgent = new Map<string, boolean>();
+  const lastByAgent = new Map<string, number>();
   for (const session of sessions) {
     loadedByAgent.set(session.agentId, (loadedByAgent.get(session.agentId) ?? 0) + 1);
     if (isActiveSession(session)) activeByAgent.set(session.agentId, true);
+    const updatedAt = session.updatedAt ?? 0;
+    if (updatedAt > (lastByAgent.get(session.agentId) ?? 0)) {
+      lastByAgent.set(session.agentId, updatedAt);
+    }
   }
 
   const rawAgents =
@@ -222,6 +274,7 @@ async function collectSnapshot(
     sessions: byAgent.get(agent.id) ?? loadedByAgent.get(agent.id) ?? 0,
     active: activeByAgent.get(agent.id) === true,
     status: agent.status,
+    lastActiveAt: lastByAgent.get(agent.id),
   }));
 
   const channelRows: DashboardChannelSnapshot[] = Object.entries(channels.channels ?? {}).map(
@@ -243,19 +296,46 @@ async function collectSnapshot(
     .slice()
     .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
     .slice(0, 24)
-    .map((session) => ({
-      key: session.key,
-      agentId: session.agentId,
-      title: session.derivedTitle ?? session.label ?? session.key,
-      updatedAt: session.updatedAt ?? 0,
-      active: isActiveSession(session),
-      lastMessage: session.lastMessage ?? undefined,
-    }));
+    .map((session) => {
+      const updatedAt = session.updatedAt ?? session.lastActivityAt ?? 0;
+      const stage = sessionStage(session, updatedAt);
+      return {
+        key: session.key,
+        agentId: session.agentId,
+        title: session.derivedTitle ?? session.displayName ?? session.label ?? session.key,
+        updatedAt,
+        active: isActiveSession(session),
+        lastMessage: session.lastMessage ?? session.lastMessagePreview ?? undefined,
+        stage,
+        progress: sessionProgress(stage),
+        source: "openclaw",
+        channel: session.channel,
+        error: session.lastRunError ?? undefined,
+      };
+    });
 
   const sessionEvents: DashboardEventSnapshot[] = sessionRows.slice(0, 8).map((session) => ({
     time: formatTime(session.updatedAt),
     tag: session.active ? "RUN" : "SESS",
     text: `${session.agentId} · ${session.title}`,
+    ts: session.updatedAt,
+    agentId: session.agentId,
+    sessionKey: session.key,
+    kind: "session",
+    source: "openclaw",
+  }));
+
+  const workItems: DashboardWorkItemSnapshot[] = sessionRows.map((session) => ({
+    id: session.key,
+    title: session.title,
+    source: "openclaw",
+    stage: session.stage ?? "done",
+    progress: session.progress ?? 0,
+    status: session.stage,
+    owner: session.agentId,
+    agentId: session.agentId,
+    sessionKey: session.key,
+    updatedAt: session.updatedAt,
   }));
 
   const events = [...liveEvents, ...sessionEvents].slice(0, 8);
@@ -284,6 +364,7 @@ async function collectSnapshot(
     agents: agentRows,
     channels: channelRows,
     sessions: sessionRows,
+    workItems,
     events,
     errors: errors.slice(0, 4),
   };

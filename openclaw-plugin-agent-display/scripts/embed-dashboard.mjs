@@ -94,13 +94,17 @@ const THEME_RANGES = [
     ],
   },
   {
+    // PARK 与 HQ 按原主题原样嵌入：不合并真实数据，保证插件内效果与 index.html 一致。
     theme: "park",
     start: "function mountPark(host, SR){",
+    end: "function mountHQ(host, SR){",
+    declarations: [],
+  },
+  {
+    theme: "hq",
+    start: "function mountHQ(host, SR){",
     end: "/* ================= 系列外壳：挂载主题、切换、记住选择 ================= */",
-    declarations: [
-      { kind: "var", name: "WS", wrapper: "__DQ_MERGE_PARK_WORKSHOPS__" },
-      { kind: "var", name: "CH", wrapper: "__DQ_MERGE_PARK_CHANNELS__" },
-    ],
+    declarations: [],
   },
 ];
 
@@ -208,7 +212,12 @@ function transformShell(source) {
   window.__DQ_BOOT__ = boot;
   window.__DQ_APPLY__ = function(snapshot){
     if (snapshot && typeof window.__DQ_SET_SNAPSHOT__ === 'function') window.__DQ_SET_SNAPSHOT__(snapshot);
-    // 根据当前主题调用对应的 UI 更新函数
+    var current = cur;
+    if (current && THEMES[current]) {
+      var hostEl = document.getElementById(THEMES[current].host);
+      if (hostEl && typeof hostEl.__dqApply === 'function') hostEl.__dqApply(snapshot);
+    }
+    // 兼容旧主题的全局刷新钩子
     if (typeof window.__DQ_UPDATE_UI__ === 'function') window.__DQ_UPDATE_UI__(snapshot);
     boot();
   };
@@ -232,10 +241,79 @@ function transformText(source) {
     .replaceAll("TASKS → AGENTS → OUTPUTS · 示例数据", "TASKS → AGENTS → OUTPUTS · OpenClaw 实时数据");
 }
 
+// PARK 与 HQ 要求与 index.html 完全一致，所有文本替换后再把这两款主题的
+// 模板和挂载函数恢复成原始内容，避免插件文案改造影响它们的画面。
+const EXACT_THEME_SEGMENTS = [
+  [
+    "<!-- ===== 主题 09 · PARK 智造园区 ===== -->",
+    "<!-- ===== 主题 10 · HQ 智能总部 ===== -->",
+  ],
+  [
+    "<!-- ===== 主题 10 · HQ 智能总部 ===== -->",
+    "<script>\n/* ===== 主题 01 · OPS 纸面工程 ===== */",
+  ],
+  [
+    "/* ================= 主题 09 · PARK 智造园区（原生 WebGL 3D 园区 + 车间，不依赖 three.js） ================= */",
+    "/* ================= 主题 10 · HQ 智能总部（原生 WebGL 3D 行政总部，不依赖 three.js） ================= */",
+  ],
+  [
+    "/* ================= 主题 10 · HQ 智能总部（原生 WebGL 3D 行政总部，不依赖 three.js） ================= */",
+    "/* ================= 系列外壳：挂载主题、切换、记住选择 ================= */",
+  ],
+];
+
+function restoreExactThemeSegments(transformed, rawSourceText) {
+  let result = transformed;
+  for (const [startMarker, endMarker] of EXACT_THEME_SEGMENTS) {
+    const rawStart = rawSourceText.indexOf(startMarker);
+    const rawEnd = rawSourceText.indexOf(endMarker, rawStart + startMarker.length);
+    if (rawStart < 0 || rawEnd < 0) {
+      throw new Error(`Could not locate original theme segment: ${startMarker}`);
+    }
+    const targetStart = result.indexOf(startMarker);
+    const targetEnd = result.indexOf(endMarker, targetStart + startMarker.length);
+    if (targetStart < 0 || targetEnd < 0) {
+      throw new Error(`Could not locate embedded theme segment: ${startMarker}`);
+    }
+    result =
+      result.slice(0, targetStart) +
+      rawSourceText.slice(rawStart, rawEnd) +
+      result.slice(targetEnd);
+  }
+  return result;
+}
+
+function assertThemeCoverage(source) {
+  const declared = [...source.matchAll(/\n\s+([a-z0-9]+):\s*\{host:\s*'host-/gu)].map((match) => match[1]);
+  const covered = new Set(THEME_RANGES.map((range) => range.theme));
+  const missing = declared.filter((theme) => !covered.has(theme));
+  if (!declared.length) throw new Error("Could not find any themes in the dashboard shell");
+  if (missing.length) {
+    throw new Error(`THEME_RANGES is missing theme(s): ${missing.join(", ")}`);
+  }
+  return declared;
+}
+
+function assertMergeHelpers(html, themeDataJs) {
+  const used = new Set(html.match(/__DQ_MERGE_[A-Z0-9_]+__/gu) ?? []);
+  const defined = new Set(
+    [...themeDataJs.matchAll(/window\.(__DQ_MERGE_[A-Z0-9_]+__)\s*=/gu)].map((match) => match[1]),
+  );
+  const missing = [...used].filter((name) => !defined.has(name));
+  if (missing.length) {
+    throw new Error(
+      `Dashboard calls merge helper(s) that scripts/theme-data.js does not define: ${missing.join(", ")}`,
+    );
+  }
+}
+
 const mainScriptMarker = "<script>\n/* ===== 主题 01 · OPS 纸面工程 ===== */";
 
+const themes = assertThemeCoverage(rawSource);
 let html = transformText(transformShell(transformAliases(transformThemes(rawSource))));
+html = restoreExactThemeSegments(html, rawSource);
 if (!html.includes(mainScriptMarker)) throw new Error("Could not find main dashboard script");
+assertMergeHelpers(html, themeDataJs);
 html = html.replace(
   mainScriptMarker,
   `<script id="dq-theme-data">\n${themeDataJs}\n</script>\n${mainScriptMarker}`,
@@ -247,14 +325,18 @@ const bridge = `
   <section id="dq-live-panel" hidden aria-label="OpenClaw 实时数据">
     <header class="dq-head">
       <div class="dq-title"><b>OPENCLAW LIVE</b><small>agent · 实时作战数据</small></div>
-      <div class="dq-status"><i class="dq-dot"></i><span id="dq-status-text">连接中</span></div>
+      <div class="dq-head-tools">
+        <div class="dq-status"><i class="dq-dot"></i><span id="dq-status-text">连接中</span></div>
+        <button class="dq-reset" id="dq-live-reset" type="button" title="复位浮层位置" aria-label="复位浮层位置">↺</button>
+      </div>
     </header>
     <div class="dq-metrics" id="dq-metrics"></div>
     <div class="dq-section"><h4>AGENTS</h4><div class="dq-list" id="dq-agents"></div></div>
     <div class="dq-section"><h4>EVENTS</h4><div class="dq-list dq-events" id="dq-events"></div></div>
     <footer class="dq-foot"><span id="dq-updated">等待数据</span><span class="dq-foot-errors" id="dq-errors"></span></footer>
   </section>
-  <button id="dq-live-pill" type="button" aria-expanded="false" aria-controls="dq-live-panel">
+  <button id="dq-live-pill" type="button" aria-expanded="false" aria-controls="dq-live-panel" title="拖动可移动浮层位置 · Shift+方向键微调">
+    <span class="dq-pill-grip" aria-hidden="true">⠿</span>
     <span class="dq-dot"></span>
     <span class="dq-pill-label">OPENCLAW</span>
     <span class="dq-pill-sep">·</span>
@@ -278,5 +360,5 @@ await writeFile(
 );
 
 console.log(
-  `[agent-display] embedded ${sourcePath} -> ${outputPath} (${html.length.toLocaleString()} chars)`,
+  `[agent-display] embedded ${sourcePath} -> ${outputPath} (${html.length.toLocaleString()} chars, ${themes.length} themes)`,
 );

@@ -2,14 +2,14 @@
 
 ## 1. 目标
 
-将仓库根目录的 `index.html`（约 13,900 行、972KB、8 套主题的 Agent 战术大屏）作为 **OpenClaw 原生插件页面**接入 Control UI，并将主题核心数据绑定到真实 OpenClaw 快照。
+将仓库根目录的 `index.html`（10 套主题的 Agent 战术大屏）作为 **OpenClaw 原生插件页面**接入 Control UI，并将主题核心数据绑定到真实 OpenClaw 快照。
 
 约束：
 
-- 不修改原项目 `index.html`、`README.md` 或其他原文件。
+- 不改变原项目 `index.html` 的视觉设计、布局与动效；只新增实时数据钩子（`host.__dqApply` / `host.__dqPaint`）。
 - 不引入常驻外部服务；插件随 Gateway 启停。
 - 不复制 Control UI 的鉴权逻辑；页面复用当前 Control UI 登录态，通过已认证 RPC 获取带签名 token 的 iframe URL。
-- 8 套主题均已接入真实 agents、sessions、channels、jobs、cases 数据；原有动效和视觉结构保留。
+- 10 套主题全部接入真实 agents、sessions、channels、jobs、cases 数据；PARK / HQ 保留 3D 模拟循环，只覆盖业务层。
 
 ## 2. 为什么不是别的方案
 
@@ -99,14 +99,26 @@
 | `metrics.cronJobs` | `cron.list` | 任务总数 |
 | `agents[]` | `agents.list` + `status.sessions.byAgent` | 名称、模型、状态、session 数 |
 | `channels[]` | `channels.status` | 渠道名、在线状态、账号、错误 |
-| `sessions[]` | `sessions.list` | 最近 8 条，含 key、agent、model、更新时间 |
-| `events[]` | `session.message` + cron/session 变化 | 最近 12 条，含时间、标签、摘要 |
+| `sessions[]` | `sessions.list` | 最近 24 条，含 key、agent、标题、更新时间、`stage`、`progress`、`source` |
+| `workItems[]` | session 投影；后续由外部连接器提供 | 统一工作项：`id`、`title`、`source`、`stage`、`progress`、`owner`、`sessionKey` |
+| `events[]` | `session.message` + cron/session 变化 | 最近 12 条，含 `ts`、`agentId`、`sessionKey`、`kind`、摘要 |
 | `models` | `models.list` | 模型数量 |
 | `errors[]` | 各 RPC 失败信息 | 浮层底部显示非致命错误 |
 
+完整的分层设计、连接器契约和演进路线见 [SYSTEM-DESIGN.md](./SYSTEM-DESIGN.md)。
+
 ### 主题数据绑定
 
-`scripts/theme-data.js` 在主题脚本之前加载，提供 `__DQ_SET_SNAPSHOT__`、`__DQ_GET_SNAPSHOT__` 和 8 个 merge helper。`scripts/embed-dashboard.mjs` 通过括号匹配定位主题内的数据声明，将其包装为 `__DQ_MERGE_*(原始数据, 主题名)`，不改动原始 `index.html`。
+`scripts/theme-data.js` 在主题脚本之前加载，提供 `__DQ_SET_SNAPSHOT__`、`__DQ_GET_SNAPSHOT__` 和前 8 套主题的 merge helper。`scripts/embed-dashboard.mjs` 通过括号匹配定位主题内的数据声明，将其包装为 `__DQ_MERGE_*(原始数据, 主题名)`，不改动原始 `index.html`。
+
+PARK 与 HQ 不再套用 `__DQ_MERGE_*`，而是在主题内部保留两个运行时钩子（`host.__dqApply` / `host.__dqPaint`），由 `theme-data.js` 的 `projectPark()` / `projectHQ()` 产出领域模型。这样 3D 模拟循环不受影响，真实数据只覆盖业务层。构建时会校验 `THEMES` 中的每款主题都有构建区间，并确认所有被引用的 `__DQ_MERGE_*` 函数都在 `theme-data.js` 中定义，缺失则构建失败。
+
+刷新时机不同，且是刻意的：
+
+- **01–08**：`__DQ_MERGE_*` 只在主题挂载时执行，`__DQ_APPLY__` 对它们只更新快照变量和右下角浮层；切换主题或刷新 iframe 才重新取数。若每次快照都重挂载，会每 3 秒重置一次动画。
+- **09–10**：每次快照都通过 `__dqApply` / `__dqPaint` 覆盖，约 5Hz。
+
+真实度分层（哪些是真实、哪些是模拟）见 [SYSTEM-DESIGN.md §5.6](./SYSTEM-DESIGN.md#56-真实度矩阵与刷新时机)。
 
 | 主题 | 绑定的真实数据 |
 | --- | --- |
@@ -116,6 +128,8 @@
 | `nebula` | `AG`、`WF` |
 | `forge` / `works` | `AGENTS`、`JOBS`（兼容 `parts` 与 `secs`） |
 | `ion` | `CASES`、`UC_SHORT` |
+| `park` | 车间负责人、任务池、渠道、事件流、终端日志、全部 KPI |
+| `hq` | 部门成员、部门统计、项目流水、事件流、顶部/底部全部 KPI |
 
 合并规则：
 
@@ -177,7 +191,7 @@ models.list()
 
 - **数据最小化**：浮层只展示聚合指标、Agent 名称、session 元数据和消息事件摘要；不展示 API Key、token、完整对话正文或文件内容。
 - **信任边界**：Native UI 运行受信任 JavaScript，拥有当前操作员的 Gateway 权限；插件安装即信任，生产环境只安装可信插件。
-- **原文件隔离**：原 `index.html` 只读；生成物在 `src/generated/dashboard-html.ts`，由构建脚本覆盖。
+- **原文件隔离**：构建只读取 `../index.html`，不手改主题视觉；实时接入通过主题内的 `host.__dqApply` / `host.__dqPaint` 钩子完成，生成物在 `src/generated/dashboard-html.ts`，由构建脚本覆盖。
 
 ### 实测结果与回退
 
@@ -188,7 +202,10 @@ models.list()
 - 响应头包含 `X-Frame-Options: SAMEORIGIN`、独立 CSP、`Referrer-Policy: no-referrer`；Gateway 没有覆盖。
 - Control UI 原生页面成功加载 iframe，桥接浮层显示真实数据（7 agents、19 sessions、2/2 channels、90.9k tokens、2 cron jobs）。
 - 浮层首条数据到达时自动展开，5 秒后收起为右下角胶囊。
-- Playwright 依次切换 8 套主题：均无 pageerror/console error；`ops`、`spider`、`neural`、`factory`、`nebula`、`forge`、`works` 显示 7 个真实中文 agent 名；`ion` 显示真实 case/session 数据；3D 主题的 `glFail` 保持隐藏，WebGL 渲染正常。
+- 浮层可拖动到任意位置，刷新后保持；展开时自动选择向上/向下并限制高度，不会超出视口；`↺` 可复位到右下角。
+- Playwright 实测：拖动后位置写入 `localStorage`，iframe 重新加载后恢复；拖动不会误触发展开/折叠；`Shift + 方向键` 微调生效。
+- Playwright 依次切换 10 套主题：均无 pageerror/console error；`ops`、`spider`、`neural`、`factory`、`nebula`、`forge`、`works` 显示 7 个真实中文 agent 名；`ion` 显示真实 case/session 数据；`park`、`hq` 布局、场景和动效与原主题一致，同时显示真实 KPI（21 会话、7 Agent、100% 渠道在线率、50.31M token）；3D 主题的 `glFail` 保持隐藏，WebGL 渲染正常。
+- 主题 9 曾在旧装机版本中因缺少 `__DQ_MERGE_PARK_*` 定义而挂载失败；当前构建会拦截此类缺失，重新安装后 PARK 正常渲染。
 
 如果未来 Gateway 版本改为强制 `DENY`，按以下顺序回退：
 
@@ -200,7 +217,7 @@ models.list()
 
 | 文件 | 作用 |
 | --- | --- |
-| `../index.html` | 原始大屏，只读，禁止修改 |
+| `../index.html` | 原始大屏；视觉不动，仅新增 PARK / HQ 实时数据钩子 |
 | `scripts/embed-dashboard.mjs` | 读取原大屏，包装主题数据声明，注入 theme-data/bridge，生成 TS 字符串 |
 | `scripts/theme-data.js` | 主题真实数据合并层：agents/workflows/channels/projects/jobs/cases/ops config |
 | `scripts/dashboard-bridge.css` | `OPENCLAW LIVE` 浮层样式 |
@@ -212,6 +229,8 @@ models.list()
 | `src/control-ui.css` | 原生页面容器样式 |
 | `src/generated/dashboard-html.ts` | 构建生成，不手改 |
 | `openclaw.plugin.json` | 插件清单 |
+| `docs/INTEGRATION.md` | 接入方案与数据映射 |
+| `docs/SYSTEM-DESIGN.md` | 系统设计：分层、连接器契约、实时链路、演进 |
 
 ## 7. 构建、安装、验证
 
@@ -286,25 +305,42 @@ openclaw plugins inspect agent-display
 
 ### Phase 2（已完成）
 
-- 8 套主题全部绑定真实数据：`ops`、`spider`、`neural`、`factory`、`nebula`、`forge`、`works`、`ion`。
+- 8 套主题绑定真实数据：`ops`、`spider`、`neural`、`factory`、`nebula`、`forge`、`works`、`ion`。
 - 主题内 agent 名称、模型、session 标题、渠道、任务/用例来自网关快照。
 - 修复 Works 的 `job.secs` 与 Forge 的 `job.parts` 字段差异。
 - 修复 Forge/Works 的 `AGI` 索引访问，保留原 id/source id 别名。
-- 合并后的真实数据会随 3 秒轮询和实时事件重绘，不需要刷新 iframe。
-- Playwright 实测 8 套主题：均显示真实 agent 名/任务数据，WebGL 3D 正常，无 pageerror/console error。
+- 合并后的真实实体在切换主题或刷新 iframe 后取最新快照；右下角浮层始终实时。01–08 不做运行时增量重绘，避免打断动画。
+- Playwright 实测 10 套主题：前 8 套显示真实 agent 名/任务数据；WebGL 3D 正常，无 pageerror/console error。
 
-### Phase 3（后续）
+### Phase 3（已完成，插件 0.2.0）
 
-- 将 Three.js 和字体本地化，消除 CDN 依赖。
+- 快照扩展 `stage` / `progress` / `source` / `workItems`，为外部连接器预留契约。
+- `theme-data.js` 新增 `projectPark()` / `projectHQ()` 投影层，以及 `metricsOf()` 指标归一化。
+- PARK 接入真实数据：6 个车间映射前 6 个 Agent，session 标题进入车间任务池，真实渠道替换渠道名，事件写入事件流与车间终端，KPI 全部替换。
+- HQ 接入真实数据：Agent 按部门关键词落位到 8 个部门，最近 8 个 session 成为项目，部门统计行与顶部/底部 KPI 全部替换。
+- 3D 模拟循环保持运行，实时数据以约 5Hz 覆盖业务层，视觉与 `index.html` 一致。
+- `live: true` 项目不自动重启、不自动回收，避免真实会话被模拟逻辑演没。
+- 首次接入实时数据时清空主题本地日志，之后只记录真实事件。
+- 实时值写入前清除 `setTxt`/`setHTML` 缓存，修复"值被缓存判等跳过"的问题。
+- 右下角 `OPENCLAW LIVE` 浮层支持拖动、位置记忆（`localStorage`）、自动避让、键盘微调与复位，避免遮挡大屏内容。
+
+### Phase 4（后续）
+
+- 接入 Jira / GitHub / CRM 连接器，产出标准 `workItems`。
+- 增加 WebSocket/SSE 推送，替代 3 秒轮询。
 - 增加数据源开关和主题级筛选（按 agent、渠道、时间范围）。
-- 增加 WebSocket/SSE 推送，替代轮询。
 - 增加权限分级：只读视图与管理员视图。
 - 增加 Playwright E2E 和 CSP 回归测试到 CI。
 - 优化 session 标题：当前部分主会话/群聊仍显示 session key 或群聊 id。
+- Three.js 和字体本地化，消除 CDN 依赖。
 
 ## 9. 已知限制
 
-- 主题的核心实体已绑定真实数据，但“今日交付”“丝线长度”“节点数”等纯视觉演示指标仍由本地动效生成。
+- 除 PARK / HQ 外的主题（01–08）仍是"合并实体 + 本地动效"：Agent / 任务 / 渠道是真实的，但"今日交付""丝线长度"等纯视觉指标不由真实数据驱动。
+- 01–08 的实体合并只发生在主题挂载时：`__DQ_APPLY__` 对它们不重绘主题本体，Agent 上下线或 session 数变化需要切换主题或刷新 iframe 才能看到；右下角浮层不受影响，始终实时。
+- PARK / HQ 的 3D 动作、工单在车间之间的流动仍由仿真驱动，只有业务层数字/名称/事件来自真实数据。
+- Agent 级 token / cost 当前无数据，只展示总量；`agents[].tokens` / `cost` 字段已预留。
+- 真实会话时间可能很旧，因此"最近会话"取最小值而非平均值。
 - 部分 session 的 `derivedTitle` 为空，主题会显示 session key 或群聊 id；这是 OpenClaw 会话元数据当前的实际内容。
 - Three.js 仍从 jsDelivr 加载；离线环境需要本地化。
 - 无 WebGL 时主题会显示回退提示并保留面板数据；Playwright 环境已验证 WebGL2/Three.js 主题正常渲染。
