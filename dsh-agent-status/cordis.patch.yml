@@ -1,0 +1,6 @@
+# Bundle layer for dsh-agent-status.
+# `name` must match the package name exactly, otherwise the loader skips the
+# row with a warning and the HUD never appears.
+- insert:
+    - id: dsh-agent-status
+      name: dsh-agent-status

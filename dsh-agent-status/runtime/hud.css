@@ -1,0 +1,756 @@
+/*
+ * Agent work-state HUD — visual tokens copied from the series shell of
+ * agent-display/index.html (:19-22):
+ *   --page #07080d  --sheet rgba(10,11,16,.96)  --sheet-line #262a39
+ *   --sheet-ink #eef0f7  --sheet-mute #7d8298
+ *   --acc #45e6f5  --acc-2 #ff3f8e
+ *   --mono JetBrains Mono  --display Archivo
+ * Only the tokens are shared; the layout below is new and self-contained.
+ */
+:host {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  --acc: #45e6f5;
+  --acc-2: #ff3f8e;
+  --mono: "JetBrains Mono", "Noto Sans SC", "PingFang SC", ui-monospace, Menlo, monospace;
+}
+
+:host([data-theme="mono"]) {
+  --acc: #d9dee8;
+  --acc-2: #9aa3b5;
+}
+
+.hud,
+.hud * {
+  box-sizing: border-box;
+}
+
+.hud {
+  --page: #07080d;
+  --sheet: rgba(10, 11, 16, 0.96);
+  --line: #1b1e2a;
+  --line-2: #262a39;
+  --ink: #eef0f7;
+  --ink-2: #b8bccb;
+  --mute: #73788e;
+  --dim: #454a5e;
+  --acc: #45e6f5;
+  --acc-2: #ff3f8e;
+  --good: #35e08a;
+  --bad: #ff4d5e;
+  --warn: #ffb020;
+  --await: #8ea6bd;
+  --mono: "JetBrains Mono", "Noto Sans SC", "PingFang SC", ui-monospace, Menlo, monospace;
+  --display: "Archivo", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --cjk: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+
+  position: absolute;
+  width: 356px;
+  color: var(--ink);
+  font: 500 11px/1.45 var(--mono);
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+  user-select: none;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+/* Anchor presets. `custom` (drag) uses inline left/top instead. */
+:host([data-anchor="bottom-right"]) .hud {
+  right: 18px;
+  bottom: 18px;
+}
+
+:host([data-anchor="top-right"]) .hud {
+  right: 18px;
+  top: 18px;
+}
+
+:host([data-anchor="top-left"]) .hud {
+  left: 18px;
+  top: 18px;
+}
+
+:host([data-anchor="bottom-left"]) .hud {
+  left: 18px;
+  bottom: 18px;
+}
+
+.hud[hidden],
+.bubble[hidden] {
+  display: none !important;
+}
+
+/* Restore bubble shown while the HUD is hidden. */
+.bubble {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(69, 230, 245, 0.45);
+  border-radius: 50%;
+  background: rgba(10, 11, 16, 0.9);
+  color: var(--acc);
+  font: 700 14px/1 var(--mono);
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 18px rgba(69, 230, 245, 0.18);
+}
+
+:host([data-anchor="bottom-right"]) .bubble {
+  right: 18px;
+  bottom: 18px;
+}
+
+:host([data-anchor="top-right"]) .bubble {
+  right: 18px;
+  top: 18px;
+}
+
+:host([data-anchor="top-left"]) .bubble {
+  left: 18px;
+  top: 18px;
+}
+
+:host([data-anchor="bottom-left"]) .bubble {
+  left: 18px;
+  bottom: 18px;
+}
+
+.bubble:hover {
+  border-color: var(--acc);
+  box-shadow: 0 0 26px rgba(69, 230, 245, 0.32);
+}
+
+/* Alternate accent theme; layout stays identical. */
+.hud[data-theme="mono"] {
+  --acc: #d9dee8;
+  --acc-2: #9aa3b5;
+  --await: #9aa3b5;
+}
+
+.hud[data-collapsed="true"] {
+  width: 156px;
+}
+
+/* ---------- shell ---------- */
+.panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, rgba(69, 230, 245, 0.06), transparent 38%),
+    radial-gradient(120% 90% at 100% 0%, rgba(255, 63, 142, 0.1), transparent 62%),
+    var(--sheet);
+  box-shadow:
+    0 0 0 1px rgba(7, 8, 13, 0.9),
+    0 18px 50px rgba(0, 0, 0, 0.55),
+    0 0 30px rgba(69, 230, 245, 0.06);
+  backdrop-filter: blur(10px);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.028) 0 1px,
+    transparent 1px 3px
+  );
+  opacity: 0.5;
+  mix-blend-mode: screen;
+}
+
+/* corner ticks, echoing the dashboard's .cn marks */
+.panel::after {
+  content: "";
+  position: absolute;
+  inset: 5px 5px 5px 5px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--ink-2), var(--ink-2)) left top / 10px 1px no-repeat,
+    linear-gradient(var(--ink-2), var(--ink-2)) left top / 1px 10px no-repeat,
+    linear-gradient(var(--ink-2), var(--ink-2)) right bottom / 10px 1px no-repeat,
+    linear-gradient(var(--ink-2), var(--ink-2)) right bottom / 1px 10px no-repeat;
+  opacity: 0.35;
+}
+
+.hud[data-phase="thinking"] .panel {
+  border-color: rgba(69, 230, 245, 0.45);
+  box-shadow: 0 0 0 1px rgba(69, 230, 245, 0.2), 0 18px 50px rgba(0, 0, 0, 0.55),
+    0 0 42px rgba(69, 230, 245, 0.16);
+}
+
+.hud[data-phase="tool"] .panel {
+  border-color: rgba(255, 63, 142, 0.5);
+  box-shadow: 0 0 0 1px rgba(255, 63, 142, 0.22), 0 18px 50px rgba(0, 0, 0, 0.55),
+    0 0 42px rgba(255, 63, 142, 0.16);
+}
+
+.hud[data-phase="done"] .panel {
+  border-color: rgba(53, 224, 138, 0.45);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 38px rgba(53, 224, 138, 0.14);
+}
+
+.hud[data-phase="failed"] .panel {
+  border-color: rgba(255, 77, 94, 0.55);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 38px rgba(255, 77, 94, 0.18);
+}
+
+.hud[data-phase="waiting"] .panel {
+  border-color: rgba(255, 176, 32, 0.5);
+}
+
+.hud[data-phase="awaiting"] .panel {
+  border-color: rgba(142, 166, 189, 0.38);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 30px rgba(142, 166, 189, 0.1);
+}
+
+.hud[data-phase="awaiting"] .core {
+  animation: core 4.8s ease-in-out infinite;
+}
+
+/* ---------- header ---------- */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  cursor: grab;
+}
+
+.hud[data-collapsed="true"] .head {
+  border-bottom: 0;
+}
+
+.head .mark {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--acc);
+  box-shadow: 0 0 8px var(--acc);
+  transform: rotate(45deg);
+  animation: mark 2.4s ease-in-out infinite;
+}
+
+.head .title {
+  flex: 1;
+  min-width: 0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.head .title i {
+  font-style: normal;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--mute);
+}
+
+.link .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.link[data-online="true"] {
+  color: var(--acc);
+}
+
+.link[data-online="true"] .dot {
+  background: var(--acc);
+  box-shadow: 0 0 6px var(--acc);
+  animation: blink 1.4s steps(1) infinite;
+}
+
+.head .toggle,
+.head .act {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--mute);
+  font: 700 10px/1 var(--mono);
+  cursor: pointer;
+}
+
+.head .act {
+  width: 16px;
+  font-size: 9px;
+  color: var(--dim);
+}
+
+.head .act.screen {
+  width: auto;
+  height: 18px;
+  padding: 0 5px;
+  border-color: rgba(69, 230, 245, 0.42);
+  color: var(--acc);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+}
+
+.head .act.screen:hover {
+  border-color: var(--acc);
+  color: #ffffff;
+  background: rgba(69, 230, 245, 0.12);
+}
+
+.head .act[hidden] {
+  display: none;
+}
+
+.head .toggle:hover,
+.head .act:hover {
+  color: var(--ink);
+  border-color: var(--ink-2);
+}
+
+/* ---------- body ---------- */
+.body {
+  padding: 11px 12px 10px;
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.hud[data-collapsed="true"] .body,
+.hud[data-collapsed="true"] .feed,
+.hud[data-collapsed="true"] .stats {
+  display: none;
+}
+
+.hud[data-phase="idle"] { --c: #5d6f7d; }
+.hud[data-phase="thinking"] { --c: var(--acc); }
+.hud[data-phase="tool"] { --c: var(--acc-2); }
+.hud[data-phase="waiting"] { --c: var(--warn); }
+.hud[data-phase="awaiting"] { --c: var(--await); }
+.hud[data-phase="done"] { --c: var(--good); }
+.hud[data-phase="failed"] { --c: var(--bad); }
+
+/* orb */
+.orb {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+}
+
+.ring {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.ring.out {
+  inset: 0;
+  border: 1px dashed color-mix(in srgb, var(--c) 55%, transparent);
+  animation: spin 9s linear infinite;
+}
+
+.ring.mid {
+  inset: 9px;
+  border: 2px solid transparent;
+  border-top-color: var(--c);
+  border-right-color: color-mix(in srgb, var(--c) 30%, transparent);
+  animation: spin 2.6s linear infinite reverse;
+  opacity: 0.85;
+}
+
+.ring.in {
+  inset: 20px;
+  border: 1px solid color-mix(in srgb, var(--c) 26%, transparent);
+}
+
+.core {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 700 15px/1 var(--mono);
+  color: var(--c);
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--c) 22%, transparent), transparent 70%);
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--c) 22%, transparent);
+  animation: core 3.2s ease-in-out infinite;
+}
+
+.hud[data-phase="thinking"] .core,
+.hud[data-phase="tool"] .core {
+  animation-duration: 1.4s;
+}
+
+.hud[data-phase="done"] .core {
+  animation: sweep 0.9s ease-out 1;
+}
+
+.hud[data-phase="failed"] .core {
+  animation: shake 0.5s ease-in-out 2;
+}
+
+/* equalizer, only while thinking */
+.eq {
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 2px;
+  height: 10px;
+  align-items: flex-end;
+}
+
+.eq span {
+  width: 2px;
+  background: var(--c);
+  opacity: 0.75;
+  animation: eq 1s ease-in-out infinite;
+}
+
+.eq span:nth-child(2) { animation-delay: 0.15s; }
+.eq span:nth-child(3) { animation-delay: 0.3s; }
+.eq span:nth-child(4) { animation-delay: 0.45s; }
+.eq span:nth-child(5) { animation-delay: 0.6s; }
+
+.hud[data-phase="thinking"] .eq {
+  display: flex;
+}
+
+/* readout */
+.read {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.kicker {
+  font-size: 8.5px;
+  letter-spacing: 0.2em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.phase {
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 25px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--c, var(--ink));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.read .cjk {
+  font-family: var(--cjk);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.read .cjk b {
+  color: var(--mute);
+  font-weight: 500;
+}
+
+.toolchip {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  height: 18px;
+  padding: 0 6px;
+  border-left: 2px solid var(--acc-2);
+  background: rgba(255, 63, 142, 0.08);
+  font-size: 9px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.toolchip b {
+  color: var(--acc-2);
+  font-weight: 700;
+}
+
+.toolchip .t {
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud[data-phase="tool"] .toolchip {
+  display: flex;
+}
+
+.errline {
+  display: none;
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--bad);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud[data-phase="failed"] .errline {
+  display: block;
+}
+
+/* ---------- stats ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--line);
+  background: var(--line);
+}
+
+.stats .cell {
+  padding: 7px 9px 6px;
+  background: rgba(7, 8, 13, 0.72);
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stats .k {
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stats .v {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- feed ---------- */
+.feed {
+  border-top: 1px solid var(--line);
+  padding: 7px 10px 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.feed .row {
+  display: grid;
+  grid-template-columns: 1px 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 14px;
+}
+
+.feed .row .bar {
+  width: 2px;
+  height: 12px;
+  justify-self: center;
+  background: var(--line-2);
+}
+
+.feed .row .bar[data-p="thinking"] { background: var(--acc); }
+.feed .row .bar[data-p="tool"] { background: var(--acc-2); }
+.feed .row .bar[data-p="done"] { background: var(--good); }
+.feed .row .bar[data-p="failed"] { background: var(--bad); }
+.feed .row .bar[data-p="waiting"] { background: var(--warn); }
+.feed .row .bar[data-p="awaiting"] { background: var(--await); }
+
+.feed .row .t {
+  font-size: 8.5px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.feed .row .m {
+  font-size: 9.5px;
+  color: var(--mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feed .row:first-child .m {
+  color: var(--ink-2);
+}
+
+.feed .empty {
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.08em;
+}
+
+/* ---------- multi-agent chips ---------- */
+.others {
+  display: none;
+  gap: 4px;
+  padding: 0 10px 8px;
+  flex-wrap: wrap;
+}
+
+.hud[data-multi="true"] .others {
+  display: flex;
+}
+
+.others .chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  font-size: 8.5px;
+  color: var(--mute);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.others .chip .d {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dim);
+  flex: none;
+}
+
+.others .chip[data-p="thinking"] .d { background: var(--acc); }
+.others .chip[data-p="tool"] .d { background: var(--acc-2); }
+.others .chip[data-p="done"] .d { background: var(--good); }
+.others .chip[data-p="failed"] .d { background: var(--bad); }
+.others .chip[data-p="waiting"] .d { background: var(--warn); }
+.others .chip[data-p="awaiting"] .d { background: var(--await); }
+
+/* ---------- footer ---------- */
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px 6px;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.hud[data-collapsed="true"] .foot {
+  padding-bottom: 7px;
+  padding-top: 3px;
+}
+
+.foot .src {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- motion ---------- */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes core {
+  0%, 100% { transform: scale(1); opacity: 0.92; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+
+@keyframes sweep {
+  0% { box-shadow: 0 0 0 0 rgba(53, 224, 138, 0.5); }
+  100% { box-shadow: 0 0 0 22px rgba(53, 224, 138, 0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+@keyframes eq {
+  0%, 100% { height: 3px; }
+  50% { height: 10px; }
+}
+
+@keyframes mark {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud *,
+  .hud *::before,
+  .hud *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* compact screens: shrink into a badge instead of covering the chat */
+@media (max-width: 720px), (max-height: 520px) {
+  .hud {
+    right: 10px;
+    bottom: 10px;
+    width: min(356px, calc(100vw - 20px));
+  }
+
+  .body {
+    padding: 9px 10px;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .orb {
+    width: 64px;
+    height: 64px;
+  }
+
+  .phase {
+    font-size: 21px;
+  }
+}
