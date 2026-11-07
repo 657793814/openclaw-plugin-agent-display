@@ -1,0 +1,76 @@
+{
+  "startedAt": 1794063502500,
+  "finishedAt": 1794063514564,
+  "frames": [
+    {
+      "t": "2026-11-07T14:58:22.785Z",
+      "ms": 1794063502786,
+      "state": "live",
+      "kind": "live_local",
+      "lastAppendAt": 1794063488283,
+      "lastAppendIso": "2026-11-07T14:58:08.283Z",
+      "workspaceToolCalls": 14,
+      "workspacePhase": "thinking",
+      "newestEvent": {
+        "at": 1794063488283,
+        "text": "Shell 已返回"
+      }
+    },
+    {
+      "t": "2026-11-07T14:58:23.515Z",
+      "ms": 1794063503515,
+      "state": "live",
+      "kind": "live_local",
+      "lastAppendAt": 1794063502441,
+      "lastAppendIso": "2026-11-07T14:58:22.441Z",
+      "workspaceToolCalls": 15,
+      "workspacePhase": "tool",
+      "newestEvent": {
+        "at": 1794063502441,
+        "text": "Shell · pid 44140"
+      }
+    },
+    {
+      "t": "2026-11-07T14:58:25.270Z",
+      "ms": 1794063505270,
+      "state": "live",
+      "kind": "live_local",
+      "lastAppendAt": 1794063505138,
+      "lastAppendIso": "2026-11-07T14:58:25.138Z",
+      "workspaceToolCalls": 16,
+      "workspacePhase": "tool",
+      "newestEvent": {
+        "at": 1794063505138,
+        "text": "Shell · pid 44149"
+      }
+    },
+    {
+      "t": "2026-11-07T14:58:26.273Z",
+      "ms": 1794063506273,
+      "state": "live",
+      "kind": "live_local",
+      "lastAppendAt": 1794063506174,
+      "lastAppendIso": "2026-11-07T14:58:26.174Z",
+      "workspaceToolCalls": 16,
+      "workspacePhase": "thinking",
+      "newestEvent": {
+        "at": 1794063506174,
+        "text": "Shell 已返回"
+      }
+    },
+    {
+      "t": "2026-11-07T14:58:31.297Z",
+      "ms": 1794063511297,
+      "state": "live",
+      "kind": "live_local",
+      "lastAppendAt": 1794063510326,
+      "lastAppendIso": "2026-11-07T14:58:30.326Z",
+      "workspaceToolCalls": 17,
+      "workspacePhase": "tool",
+      "newestEvent": {
+        "at": 1794063510326,
+        "text": "Shell · pid 44161"
+      }
+    }
+  ]
+}

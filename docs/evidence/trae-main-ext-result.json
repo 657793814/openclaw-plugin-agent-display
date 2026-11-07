@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-06T15:14:38.555Z",
+  "vscodeVersion": "1.107.1",
+  "extensionFound": true,
+  "activated": true,
+  "openCommandOk": true,
+  "commands": [
+    "agentStatus.open",
+    "agentStatus.reload",
+    "agentStatus.toggleMock",
+    "agentStatus.debug"
+  ],
+  "error": ""
+}

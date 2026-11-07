@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="neon">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEBULA 星核蜘蛛 · Trae Agent 大屏</title>
+<style nonce="__CSP_NONCE__">__SCREEN_CSS__</style>
+</head>
+<body>
+<div class="frame" id="frame" data-phase="idle">
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="star" aria-hidden="true">✦</span>
+      <span class="brand-text"><b>AGENT 作战大屏</b><small>NEBULA · TRAE LIVE OPERATIONS</small></span>
+      <span class="version">v<span id="version">—</span></span>
+    </div>
+    <div class="top-actions">
+      <span class="conn" id="conn" data-state="connecting"><i></i><span id="conn-text">连接中</span></span>
+      <span class="clock" id="clock">--:--:--</span>
+      <button class="btn" id="pause" type="button">暂停刷新</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel overview" id="overview">
+      <div class="panel-label"><span>01 / 总览</span><span class="waiting" id="waiting" hidden>等待中 · 无新事件</span></div>
+      <div class="phase-block" id="phase-block">
+        <span class="glyph" id="stage-glyph">◇</span>
+        <span class="phase-text"><small>CURRENT PHASE</small><strong id="stage-name">IDLE</strong><span id="stage-cn">空闲 / 待命</span></span>
+        <span class="pulse" id="pulse" aria-hidden="true"></span>
+      </div>
+      <div class="metrics">
+        <div><small>当前 AGENT</small><b id="m-agent">—</b></div>
+        <div><small>MODEL</small><b id="m-model">—</b></div>
+        <div><small>轮次 / 步骤</small><b id="m-turn">—</b></div>
+        <div><small>本轮耗时</small><b id="m-elapsed">—</b></div>
+        <div><small>TOKENS IN / OUT</small><b id="m-tokens">—</b></div>
+        <div><small>工具调用</small><b id="m-tools">—</b></div>
+      </div>
+    </section>
+
+    <section class="panel timeline">
+      <div class="panel-label"><span>02 / 工具时间线</span><span id="timeline-count">0 CALLS</span></div>
+      <div class="timeline-list" id="timeline"></div>
+      <div class="empty" id="timeline-empty"><b>尚无工具调用</b><span>等待 agent 开始一轮任务</span></div>
+    </section>
+
+    <aside class="panel agents">
+      <div class="panel-label"><span>03 / AGENT 阵列</span><span id="agents-count">0</span></div>
+      <div class="agent-list" id="agents"></div>
+      <div class="empty" id="agents-empty"><b>暂无 Agent</b><span>在 Trae 里发起一轮对话</span></div>
+      <div class="agent-filter" id="agent-filter" hidden><button class="chip" type="button" id="filter-all">全部 AGENT</button></div>
+    </aside>
+
+    <section class="panel events">
+      <div class="panel-label"><span>04 / 事件流</span><span>LAST 12</span></div>
+      <div class="event-list" id="events"></div>
+      <div class="empty" id="events-empty"><b>暂无事件</b><span>事件到达后会实时滚动</span></div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span>READ-ONLY · trae-webview</span>
+    <span id="footer-stale">数据实时</span>
+    <span>v<span id="footer-version">—</span></span>
+  </footer>
+
+  <div class="overlay" id="offline" hidden>
+    <b id="offline-title">连接中断</b>
+    <span id="offline-note">正在自动重连，保留最后一次快照…</span>
+  </div>
+  <div class="paused-badge" id="paused" hidden>已暂停自动刷新</div>
+</div>
+
+<div class="source-note" id="source-note" hidden></div>
+
+<script nonce="__CSP_NONCE__">globalThis.__DSH_AGENT_STATUS_SCREEN__ = __SCREEN_CONFIG__;</script>
+<script nonce="__CSP_NONCE__">__SCREEN_JS__</script>
+</body>
+</html>

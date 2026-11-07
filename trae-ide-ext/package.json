@@ -1,0 +1,97 @@
+{
+  "name": "agent-status",
+  "displayName": "NEBULA Agent Status",
+  "description": "NEBULA 星核蜘蛛作战大屏：只读旁路 Trae 的 hub_event_cache，实时展示任务阶段、工具调用与事件流。",
+  "version": "0.1.0",
+  "publisher": "trae",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.107.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:agentStatus.open",
+    "onCommand:agentStatus.openView",
+    "onCommand:agentStatus.toggleMock",
+    "onCommand:agentStatus.debug",
+    "onCommand:agentStatus.reload",
+    "onView:agentStatus.view"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "仅只读渲染本地 hub cache 快照，不执行工作区代码。"
+    },
+    "virtualWorkspaces": {
+      "supported": true,
+      "description": "只读大屏渲染，不依赖工作区文件系统。"
+    }
+  },
+  "enabledApiProposals": [
+    "trae"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentStatusBar",
+          "title": "NEBULA",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentStatusBar": [
+        {
+          "type": "webview",
+          "id": "agentStatus.view",
+          "name": "作战大屏"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "agentStatus.open",
+        "title": "Agent Status: 打开作战大屏"
+      },
+      {
+        "command": "agentStatus.openView",
+        "title": "Agent Status: 打开侧边栏大屏"
+      },
+      {
+        "command": "agentStatus.toggleMock",
+        "title": "Agent Status: 切换 Mock 回放"
+      },
+      {
+        "command": "agentStatus.debug",
+        "title": "Agent Status: 输出诊断信息"
+      },
+      {
+        "command": "agentStatus.reload",
+        "title": "Agent Status: 重载大屏"
+      },
+      {
+        "command": "agentStatus.openBrowser",
+        "title": "Agent Status: 在浏览器打开作战大屏"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "agentStatus.reload",
+          "when": "view == agentStatus.view",
+          "group": "navigation"
+        },
+        {
+          "command": "agentStatus.openBrowser",
+          "when": "view == agentStatus.view",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}

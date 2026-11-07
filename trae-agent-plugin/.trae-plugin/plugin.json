@@ -1,0 +1,30 @@
+{
+  "name": "nebula-screen",
+  "version": "0.1.0",
+  "description": "在本机 127.0.0.1 启动「星核蜘蛛 / NEBULA」智能体作战大屏，并通过浏览器打开；零 MCP 工具声明，不消耗额外 token。",
+  "author": {
+    "name": "nebula-lab"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "nebula",
+    "agent-status",
+    "observability",
+    "local"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "NEBULA 作战大屏",
+    "developerName": "nebula-lab",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive"
+    ],
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg",
+    "brandColor": "#6E8BFF",
+    "shortDescription": "一句话打开星核蜘蛛作战大屏",
+    "longDescription": "复用本机 hub_event_cache 只读快照，在 127.0.0.1 起一个带一次性 token 的本地大屏。无数据时如实显示 silent。",
+    "defaultPrompt": "打开 NEBULA 星核蜘蛛作战大屏"
+  }
+}

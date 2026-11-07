@@ -186,6 +186,38 @@ npx serve .
 
 在电脑或小主机上打开页面，使用浏览器全屏功能；常见快捷键为 F11（Mac 为 Ctrl+Cmd+F）。十款主题的桌面布局均提供「全屏」按钮。推荐 1920×1080 或更高分辨率。
 
+### Trae 插件版（NEBULA Agent Status）
+
+除了浏览器里打开，NEBULA 还有一份 Trae CN 扩展版，直接嵌在 IDE 的 Webview 面板里，用来只读旁路 Trae 的会话事件。
+
+- 代码在 `trae-ide-ext/`，是独立子目录，不改本仓库的 `index.html` 与原有主题
+- 安装包：`trae-ide-ext/dist/agent-status-0.1.0.vsix`（约 0.2 MiB）
+- 安装（Trae CN 自带 CLI）：
+
+```bash
+"/Applications/Trae CN.app/Contents/Resources/app/bin/trae-cn" \
+  --install-extension trae-ide-ext/dist/agent-status-0.1.0.vsix --force
+```
+
+装到 `~/.trae-cn/extensions/trae.agent-status-0.1.0`，装完**重载窗口**（`Cmd+Shift+P` → `Developer: Reload Window`）。
+
+扩展在 Trae 启动时（`onStartupFinished`）会自动静默拉起 `trae-agent-plugin` 的本地大屏服务（幂等，已在跑则复用）；侧边栏视图标题栏的「在浏览器打开」按钮会直接打开带一次性 token 的浏览器页面。
+
+打开方式（三者任一）：
+
+1. **侧边栏 Activity Bar**：右侧竖排图标里找 **`NEBULA`**（蜘蛛星形图标），点一下就在侧边视图里直接渲染大屏
+2. 底部状态栏点 **`NEBULA 作战大屏`**（数据源无新写入时会显示 `NEBULA · SILENT / OFFLINE`）
+3. `Cmd+Shift+P` → 输入 `NEBULA` 或 `Agent Status`，选 **`Agent Status: 打开作战大屏`**（或 `Agent Status: 打开侧边栏大屏`）
+4. 命令面板里的 `Agent Status: 切换 Mock 回放` 可用真实历史 JSONL 回放演示
+
+卸载：`rm -rf ~/.trae-cn/extensions/trae.agent-status-0.1.0`，再重载窗口。
+
+> **受限模式**：若窗口左下角出现「受限模式」，说明当前文件夹未受信任，Trae 会加载扩展但**不激活**。本扩展已声明 `capabilities.untrustedWorkspaces.supported`，因此受限模式下也会激活；若仍看不到，点状态栏「受限模式」→ 信任该文件夹即可。
+>
+> 注意：Trae 里有**两套插件**。这套是 VS Code 扩展（装在 `~/.trae-cn/extensions/`，出现在 IDE 的「扩展」面板里）；Trae 自己的「插件」面板（Agent 插件 / MCP，装在 `~/.trae-cn/plugins/`）里不会出现它。
+
+设计与实测记录见 [`docs/trae-plugin-plan.md`](docs/trae-plugin-plan.md)（含 §P0 探针实测、§P1 落地记录）。
+
 ## 配置（换成你自己的数据）
 
 业务与视觉配置主要位于 `index.html` 的各主题挂载函数内；按需加载的 CDN 地址及依赖列表位于页面末尾的系列外壳脚本。
