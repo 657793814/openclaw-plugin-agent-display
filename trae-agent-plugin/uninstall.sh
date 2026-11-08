@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# 卸载 NEBULA 作战大屏 agent 插件。
-# 只删 ~/.trae-cn/plugins/nebula-lab/nebula-screen/，不动 extensions/ 与 Trae 安装目录。
+# 卸载 NEBULA 作战大屏 agent 插件（仅当前版本目录）。
+# 不动 extensions/、Trae 安装目录，也不删除其他已安装版本。
 set -euo pipefail
 
 PUBLISHER="nebula-lab"
 NAME="nebula-screen"
-DEST="$HOME/.trae-cn/plugins/$PUBLISHER/$NAME"
-PLUGIN="$DEST/0.1.0"
+PLUGIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEST="$(dirname "$PLUGIN")"
 
-if [ ! -d "$DEST" ]; then
-  echo "未安装：$DEST 不存在" >&2
+if [ ! -d "$PLUGIN" ]; then
+  echo "未安装：$PLUGIN 不存在" >&2
   exit 0
 fi
 
-# 1) 优先走 stop.mjs（会清 state 文件）
+# 1) 优先走 stop.mjs（会清 state 文件，并校验 PID 归属）
 if [ -f "$PLUGIN/bin/stop.mjs" ]; then
   node "$PLUGIN/bin/stop.mjs" >/dev/null 2>&1 || true
 fi
@@ -29,5 +29,7 @@ if [ -f "$STATE" ]; then
   fi
 fi
 
-rm -rf "$DEST"
-echo "removed: $DEST"
+rm -rf "$PLUGIN"
+# 只有在该插件下再无其他版本时才移除父目录
+rmdir "$DEST" 2>/dev/null || true
+echo "removed: $PLUGIN"

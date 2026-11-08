@@ -5,7 +5,9 @@
  *   node bin/stop.mjs
  *   node bin/stop.mjs --json
  */
+import { execFileSync } from 'node:child_process'
 import {
+  PLUGIN_ROOT,
   STATE_FILE,
   clearState,
   pidAlive,
@@ -20,6 +22,19 @@ function emit(payload, human) {
   else process.stdout.write(`${human}\n`)
 }
 
+/** True only when the PID still belongs to this plugin's server process. */
+function isOurServer(pid) {
+  try {
+    const command = execFileSync('ps', ['-o', 'command=', '-p', String(pid)], {
+      encoding: 'utf8',
+      timeout: 2000,
+    })
+    return command.includes('server.mjs') && command.includes(PLUGIN_ROOT)
+  } catch {
+    return false
+  }
+}
+
 const state = readState()
 
 if (!state) {
@@ -32,6 +47,16 @@ if (!pidAlive(state.pid)) {
   emit(
     { stopped: false, reason: 'stale-pid', pid: state.pid },
     `发现僵尸 PID ${state.pid}，已清理运行时文件（进程本来就不在了）`,
+  )
+  process.exit(0)
+}
+
+// The PID may have been recycled by an unrelated process; never signal it.
+if (!isOurServer(state.pid)) {
+  clearState()
+  emit(
+    { stopped: false, reason: 'foreign-pid', pid: state.pid },
+    `PID ${state.pid} 已不属于本插件的大屏进程，已只清理运行时文件（未发送信号）`,
   )
   process.exit(0)
 }

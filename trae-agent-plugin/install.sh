@@ -6,7 +6,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PUBLISHER="nebula-lab"
 NAME="nebula-screen"
-VERSION="0.1.0"
+VERSION="$(node -e "process.stdout.write(require(process.argv[1]).version)" "$SRC/.trae-plugin/plugin.json")"
 DEST="$HOME/.trae-cn/plugins/$PUBLISHER/$NAME/$VERSION"
 RUNTIME="$SRC/../trae-ide-ext/media"
 

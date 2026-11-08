@@ -24,7 +24,7 @@
     "logo": "./assets/icon.svg",
     "brandColor": "#6E8BFF",
     "shortDescription": "一句话打开星核蜘蛛作战大屏",
-    "longDescription": "复用本机 hub_event_cache 只读快照，在 127.0.0.1 起一个带一次性 token 的本地大屏。无数据时如实显示 silent。",
+    "longDescription": "读取本机 Trae 的 command-execution 与 renderer 日志实时呈现 agent 活动，hub_event_cache 有新鲜写入时优先复用并在失效后自动降级；在 127.0.0.1 起一个带本机 token 的只读大屏。无数据时如实显示 silent。",
     "defaultPrompt": "打开 NEBULA 星核蜘蛛作战大屏"
   }
 }

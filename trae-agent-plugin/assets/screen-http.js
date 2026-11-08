@@ -146,9 +146,17 @@
     }
   }
 
+  let stream = null
+  let retryCount = 0
+  let retryTimer = 0
+  let warnedStale = false
+
   function subscribe() {
-    const stream = new EventSource(`${PREFIX}/stream?token=${encodeURIComponent(TOKEN)}`)
-    stream.addEventListener('state', (event) => {
+    if (stream !== null) stream.close()
+    const es = new EventSource(`${PREFIX}/stream?token=${encodeURIComponent(TOKEN)}`)
+    stream = es
+    es.addEventListener('state', (event) => {
+      retryCount = 0
       try {
         apply(JSON.parse(event.data))
         if (ctrl !== null) ctrl.setTransport('live')
@@ -156,9 +164,38 @@
         console.error('[nebula-plugin] bad stream frame', error)
       }
     })
-    stream.onerror = () => {
+    es.onerror = () => {
+      es.close()
+      if (stream === es) stream = null
       if (ctrl !== null) ctrl.setTransport('offline')
+      retryCount += 1
+      if (retryCount >= 3 && !warnedStale) {
+        warnedStale = true
+        toast('连接持续失败 · 若服务已重启，请重新执行 start.mjs 用新链接打开')
+      }
+      const delay = Math.min(30_000, 1000 * 2 ** Math.min(retryCount, 5))
+      clearTimeout(retryTimer)
+      retryTimer = setTimeout(checkAndReconnect, delay)
     }
+  }
+
+  /** A restart rotates the token, so a blind EventSource retry would 401 forever. */
+  async function checkAndReconnect() {
+    try {
+      const response = await fetch(feedUrl(), { cache: 'no-store' })
+      if (response.status === 401) {
+        if (!warnedStale) {
+          warnedStale = true
+          toast('token 已失效（服务重启）· 请重新执行 start.mjs 用新链接打开')
+        }
+        if (ctrl !== null) ctrl.setTransport('offline')
+        return
+      }
+      if (!response.ok) throw new Error(`status ${response.status}`)
+    } catch {
+      /* service still starting/stopped: keep retrying */
+    }
+    subscribe()
   }
 
   // ---------------------------------------------------------------- filter bar

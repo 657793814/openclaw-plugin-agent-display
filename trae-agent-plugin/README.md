@@ -60,16 +60,17 @@ node "$P/bin/stop.mjs"              # 停止并清理运行时文件
 | 僵尸 pid | `pid` 不存活或端口不通 → 清掉残留 `state.json` 后重新启动 |
 | 端口 | 默认 `41730`；`EADDRINUSE` 自动 +1 重试（最多 40 次），最终端口写入 `state.json` |
 | 退出 | `SIGTERM` / `SIGINT` 时清理 `state.json` 并关服务器；`stop.mjs` 3 秒不退则 `SIGKILL` |
-| 运行时文件 | `.runtime/state.json`（pid/port/token/url）、`.runtime/server.log` |
+| 运行时文件 | `.runtime/state.json`（pid/port/token/url，权限 `0600`）、`.runtime/server.log` |
 
 ## 鉴权
 
 1. 只监听 `127.0.0.1`（IPv4 回环），不绑 `0.0.0.0`。
-2. 每次启动生成 24 字节随机 token（`crypto.randomBytes`），只写在本机 `state.json` 与 URL 查询参数里。
+2. 每次启动生成 24 字节随机 token（`crypto.randomBytes`），随该服务进程有效（不是一次性），只写在本机 `state.json`（`0600`）与 URL 查询参数里。
 3. 服务端校验：`remoteAddress` 必须是回环地址，且 `Host` 必须是 `127.0.0.1` / `localhost`（防 DNS rebinding）。
 4. 除 `/healthz` 外，所有路由都要 token（query `?token=` 或 `X-Agent-Status-Token` 头），比较用 `timingSafeEqual`。
-5. 实测：无 token 访问 `/nebula-screen/api/state` → **401**；伪造 `Host` → **403**。
-6. 路径前缀为 `/nebula-screen`；旧的 DeepSeek-Harness 前缀 `/dsh-agent-status/...` 仅保留 **302 跳转**（保留 token 查询串），不再在该前缀下提供服务。
+5. 实测：无 token 访问 `/nebula-screen/api/state` → **401**（页面路由返回带“重新执行 start”的 HTML）；伪造 `Host` → **403**。
+6. 路径前缀为 `/nebula-screen`；旧的 DeepSeek-Harness 前缀 `/dsh-agent-status/...` 仅保留 **302 跳转**，跳转目标会换成**当前进程的新 token**，不再透传旧查询串。
+7. 页面响应带 `Referrer-Policy: no-referrer`，避免 URL 里的 token 通过 Referer 外泄；`/healthz` 只返回 `{ok:true}`。
 
 ## 数据源（不伪造）
 
@@ -78,7 +79,9 @@ node "$P/bin/stop.mjs"              # 停止并清理运行时文件
 1. **`hub_cache`**：`~/.trae-cn/hub_event_cache/TraeCode/<hubId>/*.jsonl`。写入方是 Trae 原生 Hub 桥，只有云端/Hub 链路激活时才有文件；纯本地安装会建目录但不落盘。
 2. **`live_local`**（本机默认）：`ModularData/ai-agent/command-execution/<id>/execution.json`（真实命令执行：状态 / cwd / pid / 退出码 / 时间戳）+ `logs/<launch>/window<N>/renderer.log` 的 `plan_item`（会话 / task / 工具名 / agent 名）。前者没有命令文本，屏幕上只显示 `Shell · pid <n>` 与工作区目录名；后者用于会话归属。
 
-`auto` 只有在 hub cache **今天确实有写入** 时才选 `hub_cache`，否则选 `live_local`。两种方式都不读 `database.db`，不接私有 IPC。
+`auto` 只有在 hub cache **最近 15 分钟内有写入** 时才选 `hub_cache`，否则选 `live_local`。运行中每 30s 复查一次：hub 超过 15 分钟无写入即降级到 `live_local`（`source.note` 会写明原因），降级从切换时刻开始，不重播旧 15 分钟，避免重复计数。两种方式都不读 `database.db`，不接私有 IPC。
+
+若某条 `execution.json` 在运行中被删除或写坏，`live_local` 会给 3 次轮询宽限，然后补发 `tool.result(ok=false, error="execution record unavailable")` 并结束该 agent，不会让看板永久停在 `live`。
 
 状态语义（`source.state`，`source.kind` 标明来源）：
 

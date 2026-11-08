@@ -309,10 +309,16 @@ function createStore(options = {}) {
      */
     snapshot(options = {}) {
       const at = now()
+      // Snapshot only shows 7 days, so older records are unreachable: drop
+      // them here instead of letting the Map grow for the process lifetime.
+      const cutoff = at - 7 * 86_400_000
+      for (const [id, record] of agents) {
+        if (record.updatedAt <= cutoff) agents.delete(id)
+      }
       const list = [...agents.values()]
         // Seven days: old hub files are still useful history, and the renderer
         // needs a stable slot for each task.
-        .filter((record) => record.updatedAt > at - 7 * 86_400_000)
+        .filter((record) => record.updatedAt > cutoff)
         .map((record) => {
           const expired =
             (record.phase === 'done' || record.phase === 'failed') &&

@@ -7,7 +7,17 @@ export const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.u
 export const RUNTIME_DIR = path.join(PLUGIN_ROOT, '.runtime')
 export const STATE_FILE = path.join(RUNTIME_DIR, 'state.json')
 export const LOG_FILE = path.join(RUNTIME_DIR, 'server.log')
-export const VERSION = '0.1.0'
+
+function pluginVersion() {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.trae-plugin', 'plugin.json'), 'utf8'))
+    return String(manifest.version || '')
+  } catch {
+    return ''
+  }
+}
+
+export const VERSION = pluginVersion() || '0.1.0'
 export const PREFIX = '/nebula-screen'
 // Kept so previously bookmarked `/dsh-agent-status/...` links still resolve.
 export const LEGACY_PREFIX = '/dsh-agent-status'
@@ -26,7 +36,14 @@ export function readState() {
 
 export function writeState(state) {
   ensureRuntimeDir()
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2))
+  // The file carries the token and the full URL; keep it private to this user
+  // (an existing 0644 file from an older install is corrected too).
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), { mode: 0o600 })
+  try {
+    fs.chmodSync(STATE_FILE, 0o600)
+  } catch {
+    /* best effort */
+  }
 }
 
 export function clearState() {

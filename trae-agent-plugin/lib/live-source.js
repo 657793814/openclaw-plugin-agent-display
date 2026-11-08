@@ -71,13 +71,41 @@ function createLiveSource(options = {}) {
   const onStatus = typeof options.onStatus === 'function' ? options.onStatus : () => {}
   const now = options.now || (() => Date.now())
   const pollMs = Math.max(250, Number(options.pollMs) || 1000)
+  // Events older than this are history, not live activity. `sinceMs` lets the
+  // caller start a fallback source at "now" so a hub→live switch does not
+  // replay (and double count) the last 15 minutes.
+  const hydrateFrom = Math.max(now() - HYDRATE_MS, numberAt(options.sinceMs))
+  const MISSING_GRACE_MS = Math.max(3000, pollMs * 3)
+  // A fresh process only reads the tail of an old renderer.log; scanning
+  // megabytes of history on the first poll used to spike CPU.
+  const MAX_INITIAL_READ = 2_000_000
 
-  /** @type {Map<string, { status: string, cwd: string, groupId: string, label: string, callEmitted: boolean, resultEmitted: boolean }>} */
+  function initialOffset(file, size) {
+    if (size <= MAX_INITIAL_READ) return 0
+    try {
+      const fd = fs.openSync(file, 'r')
+      try {
+        const chunk = Buffer.alloc(64 * 1024)
+        fs.readSync(fd, chunk, 0, chunk.length, size - MAX_INITIAL_READ)
+        const text = chunk.toString('utf8')
+        const newline = text.indexOf('\n')
+        if (newline < 0) return size
+        return size - MAX_INITIAL_READ + Buffer.byteLength(text.slice(0, newline + 1), 'utf8')
+      } finally {
+        fs.closeSync(fd)
+      }
+    } catch {
+      return size
+    }
+  }
+
+  /** @type {Map<string, { status: string, cwd: string, groupId: string, label: string, callEmitted: boolean, resultEmitted: boolean, lastSeenAt: number, missingSince: number }>} */
   const executions = new Map()
   /** @type {Map<string, { offset: number, ino: number }>} */
   const logFiles = new Map()
   const planTasks = new Set()
-  const planCalls = new Set()
+  /** callKey -> taskId, for calls whose result never arrived. */
+  const pendingCalls = new Map()
   const planResults = new Set()
   const skipped = new Set()
   const workspaceStarted = new Set()
@@ -89,6 +117,7 @@ function createLiveSource(options = {}) {
   let activeLaunch = ''
   let commandCount = 0
   let planCount = 0
+  let cmdUnreadable = false
 
   function touch(at) {
     const stamp = numberAt(at) || now()
@@ -96,11 +125,35 @@ function createLiveSource(options = {}) {
   }
 
   // ------------------------------------------------------------- commands
+  /**
+   * Close an execution whose record is unusable so the store never keeps it
+   * "running". A call that was emitted without a result gets a synthetic
+   * failure; the agent finishes instead of hanging forever.
+   */
+  function abandon(state, id, reason) {
+    if (state.callEmitted && !state.resultEmitted) {
+      state.resultEmitted = true
+      onEvent({
+        kind: 'tool.result',
+        at: now(),
+        taskId: state.groupId,
+        callId: id,
+        ok: false,
+        error: reason,
+      })
+      touch(now())
+    }
+    state.status = 'failed'
+    state.lastSeenAt = now()
+  }
+
   function scanCommands() {
     let entries
     try {
       entries = fs.readdirSync(cmdRoot, { withFileTypes: true })
+      cmdUnreadable = false
     } catch {
+      cmdUnreadable = true
       return false
     }
     for (const entry of entries) {
@@ -110,34 +163,53 @@ function createLiveSource(options = {}) {
       const known = executions.get(id)
       if (known !== undefined && known.status !== 'running') continue
       const file = path.join(cmdRoot, id, 'execution.json')
+      let statMtime = 0
       if (known === undefined) {
         // History is only hydrated for the recent window; older executions are
         // skipped so the board does not fill with hundreds of dead agents.
-        let stat
         try {
-          stat = fs.statSync(file)
+          statMtime = fs.statSync(file).mtimeMs
         } catch {
-          skipped.add(id)
-          continue
-        }
-        if (now() - stat.mtimeMs > HYDRATE_MS) {
           skipped.add(id)
           continue
         }
       }
       const record = readJson(file)
       if (record === null) {
-        skipped.add(id)
+        if (known === undefined) {
+          skipped.add(id)
+          continue
+        }
+        // The record was readable before (possibly mid-run) and vanished now.
+        // Give it a grace window for atomic rewrites, then close the call so
+        // the agent cannot stay "running" forever on a dead record.
+        if (now() - known.lastSeenAt <= HYDRATE_MS) {
+          if (known.missingSince === 0) known.missingSince = now()
+          if (now() - known.missingSince < MISSING_GRACE_MS) continue
+        }
+        abandon(known, id, 'execution record unavailable')
         continue
       }
       const cwd = String(record.cwd || '')
       if (cwd === '') {
-        skipped.add(id)
+        if (known === undefined) {
+          skipped.add(id)
+        } else {
+          abandon(known, id, 'execution record has no cwd')
+        }
         continue
       }
       const status = String(record.status || '')
       const createdAt = numberAt(record.createdAtMs) || now()
-      if (now() - createdAt > HYDRATE_MS) {
+      if (!(known !== undefined && (status === 'running' || !known.resultEmitted)) && now() - createdAt > HYDRATE_MS) {
+        skipped.add(id)
+        continue
+      }
+      if (known === undefined && createdAt < hydrateFrom) {
+        skipped.add(id)
+        continue
+      }
+      if (known === undefined && statMtime !== 0 && statMtime < hydrateFrom) {
         skipped.add(id)
         continue
       }
@@ -159,9 +231,20 @@ function createLiveSource(options = {}) {
           })
         }
         touch(createdAt)
-        executions.set(id, { status: '', cwd, groupId, label, callEmitted: false, resultEmitted: false })
+        executions.set(id, {
+          status: '',
+          cwd,
+          groupId,
+          label,
+          callEmitted: false,
+          resultEmitted: false,
+          lastSeenAt: now(),
+          missingSince: 0,
+        })
       }
       const state = executions.get(id)
+      state.lastSeenAt = now()
+      state.missingSince = 0
 
       if (status === 'running' && !state.callEmitted) {
         state.callEmitted = true
@@ -212,6 +295,22 @@ function createLiveSource(options = {}) {
   }
 
   // ------------------------------------------------------------ renderer
+  /** A new Trae launch starts new logs: close calls that will never report. */
+  function closePendingCalls(reason) {
+    for (const [callKey, taskId] of pendingCalls) {
+      onEvent({
+        kind: 'tool.result',
+        at: now(),
+        taskId,
+        callId: callKey,
+        ok: false,
+        error: reason,
+      })
+    }
+    pendingCalls.clear()
+    planResults.clear()
+  }
+
   function resolveLaunch() {
     let entries
     try {
@@ -225,7 +324,7 @@ function createLiveSource(options = {}) {
       if (entry.name > latest) latest = entry.name
     }
     if (latest !== activeLaunch) {
-      // A new Trae launch starts new logs; forget old offsets.
+      if (activeLaunch !== '') closePendingCalls('log launch changed before result')
       activeLaunch = latest
       logFiles.clear()
     }
@@ -281,7 +380,7 @@ function createLiveSource(options = {}) {
     if (taskId === '') return
     const sessionId = String(data.sessionId || data.targetSessionId || '')
     const generatedAt = numberAt(data.timing && data.timing.generated_at_ms) || lineAt
-    if (now() - generatedAt > HYDRATE_MS) return
+    if (generatedAt < hydrateFrom) return
     const agentName = String(data.agent_display_name || data.agent_id || '')
     const groupTask = `plan:${taskId}`
     const planId = String(data.planItemId || '')
@@ -302,8 +401,8 @@ function createLiveSource(options = {}) {
     const name = String(data.toolCallName || rpc || '').trim()
     const info = data.tool_call_info
     const resultStatus = String((info && info.result && info.result.status) || '')
-    if (name !== '' && !planCalls.has(callKey)) {
-      planCalls.add(callKey)
+    if (name !== '' && !pendingCalls.has(callKey)) {
+      pendingCalls.set(callKey, groupTask)
       onEvent({
         kind: 'tool.call',
         at: generatedAt,
@@ -313,8 +412,9 @@ function createLiveSource(options = {}) {
       })
       touch(generatedAt)
     }
-    if (resultStatus !== '' && planCalls.has(callKey) && !planResults.has(callKey)) {
+    if (resultStatus !== '' && pendingCalls.has(callKey) && !planResults.has(callKey)) {
       planResults.add(callKey)
+      pendingCalls.delete(callKey)
       onEvent({
         kind: 'tool.result',
         at: generatedAt,
@@ -336,11 +436,11 @@ function createLiveSource(options = {}) {
     }
     let state = logFiles.get(file)
     if (state === undefined) {
-      state = { offset: 0, ino: stat.ino }
+      state = { offset: initialOffset(file, stat.size), ino: stat.ino }
       logFiles.set(file, state)
     }
     if (stat.ino !== state.ino || stat.size < state.offset) {
-      state.offset = 0
+      state.offset = initialOffset(file, stat.size)
       state.ino = stat.ino
     }
     if (stat.size <= state.offset) return
@@ -379,6 +479,15 @@ function createLiveSource(options = {}) {
   }
 
   // -------------------------------------------------------------- status
+  /** Finished executions older than the hydration window are dead weight. */
+  function prune(nowMs) {
+    for (const [id, state] of executions) {
+      if (state.status !== 'running' && nowMs - state.lastSeenAt > HYDRATE_MS) {
+        executions.delete(id)
+      }
+    }
+  }
+
   function runningCount() {
     let count = 0
     for (const state of executions.values()) {
@@ -396,7 +505,9 @@ function createLiveSource(options = {}) {
       onStatus({
         state: 'offline',
         kind: 'live_local',
-        note: `未找到本地运行数据：${cmdRoot}`,
+        note: cmdUnreadable
+          ? `命令目录不可读（路径不存在或无权限）：${cmdRoot}`
+          : `未找到本地运行数据：${cmdRoot}`,
         files: 0,
         lastAppendAt: null,
       })
@@ -409,9 +520,10 @@ function createLiveSource(options = {}) {
           ? 'live'
           : 'silent',
       note:
-        lastActivityAt === 0
+        (cmdUnreadable ? `命令目录不可读：${cmdRoot} · ` : '') +
+        (lastActivityAt === 0
           ? '本地实时源暂无活动 · 等待新的命令执行或会话事件'
-          : `本地实时源 · 命令执行 ${commandCount} 条（运行中 ${runningCount()}）· 会话事件 ${planCount} 条`,
+          : `本地实时源 · 命令执行 ${commandCount} 条（运行中 ${runningCount()}）· 会话事件 ${planCount} 条`),
       files: commandCount + planCount,
       lastAppendAt: lastActivityAt || null,
       roots: { commands: cmdRoot, logs: logRoot },
@@ -423,6 +535,7 @@ function createLiveSource(options = {}) {
     if (stopped) return
     const hasCmd = scanCommands()
     const hasLog = scanLogs()
+    prune(now())
     firstScanDone = true
     emitStatus(hasCmd, hasLog)
   }

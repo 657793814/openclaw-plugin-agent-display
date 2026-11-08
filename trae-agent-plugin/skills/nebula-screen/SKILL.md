@@ -42,7 +42,7 @@ node "$PLUGIN/bin/start.mjs" --json --open
 
 4. 把命令输出里的 `url` 原样交给用户，并说明：
    - `source.kind = "live_local"`：读本机 `command-execution` + 最新 `renderer.log`（默认；hub cache 在本机不落盘）
-   - `source.kind = "hub_cache"`：读 `hub_event_cache`（仅当该目录今天确实有写入）
+   - `source.kind = "hub_cache"`：读 `hub_event_cache`（仅当最近 15 分钟内有写入；运行中超时自动降级到 `live_local`）
    - `source.state = "live"`：有实时事件 / 有正在运行的命令
    - `source.state = "silent"`：数据源存在但近期无活动，大屏会显示 `SILENT`，**不要**说成「正常运行」
    - `source.state = "offline"`：数据源目录不存在
@@ -58,6 +58,6 @@ node "$PLUGIN/bin/stop.mjs"
 ## 重要约束
 
 - 不要读取 `~/.trae-cn/database.db`，不要调用 Trae 私有 IPC。
-- 服务只绑定 `127.0.0.1`，并且 URL 里带一次性 token；不要把 token 之外的地址或日志贴到公开渠道。
+- 服务只绑定 `127.0.0.1`，URL 里带 token；token 随该服务进程有效（重启会换新 token），只写在本机 `.runtime/state.json`（权限 `0600`）。不要把带 token 的完整 URL 或日志贴到公开渠道；旧链接失效时重新执行 `start.mjs --open`。
 - 端口冲突时脚本会自动退让到下一个可用端口，最终端口写在 `$PLUGIN/.runtime/state.json`，不要自己猜端口。
 - 渲染层复用现有 `nebula` 资源，不要改视觉。

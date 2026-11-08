@@ -664,14 +664,14 @@ MockSource ─────┘                                              ↑
 - `token_usage` 更新与顶部数字一致（逐条对拍）；
 - 关闭 Trae 再开：不重复补播历史脉冲；
 - 隐私自查：抓取 webview 的 `postMessage`，确认不含 `reasoning_content` / `user_message.content` / `old_string` / `new_content`；
-- 单测：`node --test` 针对 `hub-cache` 解析（复用 dsh 的 fixtures 风格），覆盖半行、坏行、乱序 `seq`、重复行。
+- 单测：`node --test tests/*.test.js`。当前实际覆盖：hub 分组/不串线（3 例）、live 源（重复轮询不重复计数、running 记录消失后补发失败 result、`sinceMs` 不重播历史）、token 鉴权（query/header/回环校验）。半行、坏行、乱序 `seq`、重复行**尚未覆盖**。
 
 ### P2 —— 双源合并 + 兜底
 
 **做**：
 
 1. `CommandExecSource` 合并：`Shell` 调用优先用 `execution.json` 的真实 `exitCode/durationMs`；hub cache 缺失时仍能显示「有命令在跑」。
-2. watchdog：文件被轮转/删除 → 重新发现；事件时间戳乱序 → 按 `at` 重排，丢弃 > 8s 的旧脉冲（沿用 dsh 规则）。
+2. watchdog：已实现「finished 记录按 15 分钟窗口淘汰」「running 记录消失后补发失败 result」「launch 切换前关闭未闭合调用」；**未实现**文件删除后的重新发现与按 `at` 重排（当前轮询顺序消费）。
 3. 状态栏 HUD：`$(pulse) 调用工具 · Edit` / `$(check) 完成`。
 4. `experimental`：`ps` 抓短命进程 argv（默认关闭，开关写在设置项）。
 
